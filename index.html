@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>手势交互</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #08080e;
+            color: #fff;
+            font-family: system-ui, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 40px;
+        }
+        h1 { font-size: 28px; font-weight: 300; letter-spacing: 6px; color: rgba(255,255,255,0.6); }
+        .cards { display: flex; gap: 30px; flex-wrap: wrap; justify-content: center; }
+        .card {
+            width: 280px; height: 320px;
+            border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.02);
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            gap: 16px;
+            text-decoration: none; color: #fff;
+            transition: all 0.3s ease; cursor: pointer;
+            position: relative; overflow: hidden;
+        }
+        .card:hover { border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.05); transform: translateY(-4px); }
+        .card .icon { font-size: 64px; }
+        .card .title { font-size: 20px; font-weight: 500; letter-spacing: 2px; }
+        .card .desc { font-size: 13px; color: rgba(255,255,255,0.3); text-align: center; line-height: 1.6; padding: 0 20px; }
+        .card .tag { position: absolute; top: 16px; right: 16px; font-size: 11px; background: rgba(255,255,255,0.06); padding: 4px 10px; border-radius: 20px; color: rgba(255,255,255,0.3); }
+    </style>
+</head>
+<body>
+    <h1>✦ 手势交互实验室</h1>
+    <div class="cards">
+        <a class="card" href="ball.html">
+            <span class="tag">v1</span>
+            <div class="icon">🌊</div>
+            <div class="title">手势控球</div>
+            <div class="desc">用手势控制粒子球体旋转<br>🖐挥手 · ✊握拳换色 · 🤏捏合停止</div>
+        </a>
+        <a class="card" href="board.html">
+            <span class="tag">v2</span>
+            <div class="icon">✏️</div>
+            <div class="title">手势黑板</div>
+            <div class="desc">隔空用手指写字画画<br>🤏捏笔 · ✊橡皮 · 🖐清空</div>
+        </a>
+    </div>
+</body>
+</html>

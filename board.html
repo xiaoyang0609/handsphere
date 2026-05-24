@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>手势黑板</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; background: #1a1a2e; font-family: system-ui, sans-serif; }
+
+        #draw-canvas {
+            position: fixed; inset: 0; z-index: 1;
+            cursor: none;
+        }
+        #hand-overlay {
+            position: fixed; inset: 0; z-index: 2;
+            pointer-events: none;
+        }
+        #webcam-container {
+            position: fixed; bottom: 16px; right: 16px;
+            width: 140px; height: 105px;
+            border-radius: 10px; overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.1);
+            z-index: 3; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        #webcam-container video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+
+        #toolbar {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            z-index: 5; display: flex; gap: 8px; align-items: center;
+            background: rgba(0,0,0,0.5); backdrop-filter: blur(12px);
+            padding: 8px 16px; border-radius: 30px;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        #toolbar .mode {
+            padding: 6px 14px; border-radius: 20px;
+            font-size: 12px; letter-spacing: 1px;
+            transition: all 0.3s;
+        }
+        #toolbar .mode.active {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+        }
+        #toolbar .mode.inactive {
+            color: rgba(255,255,255,0.2);
+        }
+        #toolbar .sep { width: 1px; height: 20px; background: rgba(255,255,255,0.06); }
+        #toolbar .action {
+            padding: 6px 14px; border-radius: 20px;
+            font-size: 12px; cursor: pointer; border: none;
+            background: transparent; color: rgba(255,255,255,0.3);
+            transition: all 0.3s;
+        }
+        #toolbar .action:hover { color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.05); }
+
+        #status {
+            position: fixed; bottom: 130px; right: 20px;
+            color: rgba(255,255,255,0.15); font-size: 10px; z-index: 3;
+            text-align: right; pointer-events: none; line-height: 1.5;
+        }
+
+        #loading {
+            position: fixed; inset: 0; z-index: 100;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: #1a1a2e; color: #fff; transition: opacity 0.8s;
+        }
+        #loading.hidden { opacity: 0; pointer-events: none; }
+        #loading .spinner {
+            width: 28px; height: 28px;
+            border: 2px solid rgba(255,255,255,0.06); border-top-color: #4a9eff;
+            border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 14px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        #back-btn {
+            position: fixed; top: 20px; left: 20px; z-index: 5;
+            color: rgba(255,255,255,0.2); font-size: 12px;
+            text-decoration: none; padding: 6px 14px;
+            border: 1px solid rgba(255,255,255,0.06); border-radius: 20px;
+            transition: all 0.3s;
+        }
+        #back-btn:hover { border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.4); }
+
+        #hint {
+            position: fixed; bottom: 30px; left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.06); font-size: 11px; z-index: 3;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <a id="back-btn" href="index.html">← 返回</a>
+    <div id="loading"><div class="spinner"></div><div>载入中...</div></div>
+    <div id="webcam-container"><video id="webcam" playsinline></video></div>
+
+    <canvas id="draw-canvas"></canvas>
+    <canvas id="hand-overlay"></canvas>
+
+    <div id="toolbar">
+        <span class="mode active" id="mode-pen">✏️ 两指写字</span>
+        <span class="mode inactive" id="mode-eraser">🤏 五指擦除</span>
+        <span class="sep"></span>
+        <button class="action" onclick="clearAll()">🗑 清空</button>
+        <button class="action" onclick="cycleColor()">🎨 换色</button>
+    </div>
+    <div id="status">模式: <span id="status-text">等待</span></div>
+    <div id="hint">🤏 两指捏合 = 写字 · 🖐 五指捏合 = 擦除 · 🖐 摊开3秒 = 清空</div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+    <script>
+    // ===== Canvas 设置 =====
+    const drawCanvas = document.getElementById('draw-canvas');
+    const dCtx = drawCanvas.getContext('2d');
+    const overlay = document.getElementById('hand-overlay');
+    const oCtx = overlay.getContext('2d');
+
+    function resizeCanvas() {
+        drawCanvas.width = window.innerWidth;
+        drawCanvas.height = window.innerHeight;
+        overlay.width = window.innerWidth;
+        overlay.height = window.innerHeight;
+        // 恢复绘制内容
+        if (savedImageData) {
+            dCtx.putImageData(savedImageData, 0, 0);
+        }
+    }
+    let savedImageData = null;
+    function saveCanvas() { savedImageData = dCtx.getImageData(0, 0, drawCanvas.width, drawCanvas.height); }
+
+    // ===== 颜色 =====
+    const penColors = ['#ffffff', '#ff1744', '#ff6d00', '#ffea00', '#00e676', '#2979ff', '#9c27b0'];
+    let colorIdx = 0;
+    let penColor = penColors[0];
+    function cycleColor() {
+        colorIdx = (colorIdx + 1) % penColors.length;
+        penColor = penColors[colorIdx];
+        document.getElementById('mode-pen').textContent = `✏️ ${penColor}`;
+    }
+
+    // ===== 手部绘制 =====
+    const HAND_CONNECTIONS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]];
+    // 镜像 X 坐标：摄像头画面是镜像的，坐标也要镜像
+    function m(lm) { return lm ? lm.map(p => ({x: 1 - p.x, y: p.y, z: p.z})) : lm; }
+
+    // ===== 绘制状态 =====
+    let mode = 'pen'; // 'pen' | 'eraser'
+    let isDrawing = false;
+    let lastX = 0, lastY = 0;
+    let penSize = 6;
+    let eraserSize = 60;
+
+    // 手势状态
+    let clearHoldTimer = 0;
+    let clearHoldStart = 0;
+    let handActive = false;
+    let lastLandmarks = null;
+    let handFrames = 0;
+
+    // 为了平滑线条，记录点队列
+    let points = [];
+
+    function drawHandSkeleton(lm) {
+        oCtx.clearRect(0, 0, overlay.width, overlay.height);
+        if (!lm) return;
+        lm = m(lm); // 镜像 X 坐标
+        const w = overlay.width, h = overlay.height;
+
+        // 骨骼
+        oCtx.strokeStyle = 'rgba(74,158,255,0.25)'; oCtx.lineWidth = 1.5;
+        oCtx.beginPath();
+        for (const [i,j] of HAND_CONNECTIONS) { oCtx.moveTo(lm[i].x*w, lm[i].y*h); oCtx.lineTo(lm[j].x*w, lm[j].y*h); }
+        oCtx.stroke();
+
+        // 关节点
+        for (let i = 0; i < lm.length; i++) {
+            const p = lm[i], x = p.x*w, y = p.y*h;
+            const isTip = [4,8,12,16,20].includes(i);
+            const isPalm = [0,5,9,13,17].includes(i);
+            oCtx.beginPath(); oCtx.arc(x, y, isTip?5:isPalm?2.5:1.5, 0, Math.PI*2);
+            oCtx.fillStyle = isTip ? 'rgba(255,200,50,0.7)' : isPalm ? 'rgba(74,158,255,0.5)' : 'rgba(255,255,255,0.3)';
+            oCtx.fill();
+            if (isTip) { oCtx.strokeStyle = 'rgba(255,255,255,0.4)'; oCtx.lineWidth = 1; oCtx.stroke(); }
+        }
+
+        // 绘制光标
+        const tip = lm[8]; // 食指指尖
+        if (tip) {
+            const cx = tip.x * w, cy = tip.y * h;
+            if (mode === 'pen') {
+                // 画笔光标
+                oCtx.beginPath(); oCtx.arc(cx, cy, penSize*2, 0, Math.PI*2);
+                oCtx.fillStyle = penColor + '40'; oCtx.fill();
+                oCtx.beginPath(); oCtx.arc(cx, cy, 2, 0, Math.PI*2);
+                oCtx.fillStyle = penColor; oCtx.fill();
+            } else {
+                // 五指捏合 → 橡皮光标
+                oCtx.beginPath(); oCtx.arc(cx, cy, eraserSize/2, 0, Math.PI*2);
+                oCtx.strokeStyle = 'rgba(255,100,100,0.4)'; oCtx.lineWidth = 2; oCtx.setLineDash([4,4]); oCtx.stroke(); oCtx.setLineDash([]);
+                oCtx.beginPath(); oCtx.arc(cx, cy, 3, 0, Math.PI*2);
+                oCtx.fillStyle = 'rgba(255,100,100,0.5)'; oCtx.fill();
+                // 五指标记
+                oCtx.font = '10px sans-serif'; oCtx.textAlign = 'center';
+                oCtx.fillStyle = 'rgba(255,100,100,0.3)';
+                oCtx.fillText('🤏', cx, cy - eraserSize/2 - 6);
+            }
+            // 显示拇指-食指间距（调试用）
+            const thumb = lm[4];
+            if (thumb) {
+                const d = Math.hypot(thumb.x - tip.x, thumb.y - tip.y);
+                const dd = (d * 100).toFixed(0);
+                oCtx.font = '9px monospace'; oCtx.textAlign = 'center';
+                oCtx.fillStyle = d < 0.10 ? 'rgba(100,255,100,0.5)' : 'rgba(255,255,255,0.2)';
+                oCtx.fillText(`↕${dd}`, (thumb.x + tip.x)/2 * w, (thumb.y + tip.y)/2 * h - 12);
+                // 连线
+                oCtx.beginPath(); oCtx.moveTo(thumb.x*w, thumb.y*h); oCtx.lineTo(tip.x*w, tip.y*h);
+                oCtx.strokeStyle = d < 0.10 ? 'rgba(100,255,100,0.3)' : 'rgba(255,255,255,0.08)';
+                oCtx.lineWidth = 1; oCtx.stroke();
+            }
+        }
+
+        // 模式提示
+        const palm = lm[9];
+        if (palm) {
+            const x = palm.x*w, y = palm.y*h;
+            oCtx.font = '11px system-ui, sans-serif'; oCtx.textAlign = 'center';
+            if (clearHoldTimer > 0) {
+                const pct = Math.min(clearHoldTimer / 3, 1);
+                oCtx.fillStyle = `rgba(255,200,50,${0.3 + pct * 0.5})`;
+                oCtx.fillText(`🖐 清空中 ${'█'.repeat(Math.floor(pct*6)) + '░'.repeat(6-Math.floor(pct*6))}`, x, y - 30);
+                // 进度环
+                oCtx.beginPath(); oCtx.arc(x, y - 16, 14, -Math.PI/2, -Math.PI/2 + pct * Math.PI * 2);
+                oCtx.strokeStyle = `rgba(255,200,50,${0.3 + pct * 0.3})`;
+                oCtx.lineWidth = 2; oCtx.stroke();
+            } else {
+                const label = mode === 'pen' ? '✏️ 写字中' : '🤏 五指擦除中';
+                oCtx.fillStyle = 'rgba(255,255,255,0.2)'; oCtx.fillText(label, x, y - 30);
+            }
+        }
+    }
+
+    // ===== 画线（使用 canvas 原生绘制，更顺滑） =====
+    function drawSmoothLine(x1, y1, x2, y2, color, size) {
+        dCtx.beginPath();
+        dCtx.moveTo(x1, y1);
+        dCtx.lineTo(x2, y2);
+        dCtx.strokeStyle = color;
+        dCtx.lineWidth = size * 2.5;
+        dCtx.lineCap = 'round';
+        dCtx.lineJoin = 'round';
+        dCtx.stroke();
+    }
+
+    function eraseAt(x, y, size) {
+        dCtx.save();
+        dCtx.globalCompositeOperation = 'destination-out';
+        dCtx.beginPath(); dCtx.arc(x, y, size, 0, Math.PI*2);
+        dCtx.fillStyle = 'rgba(0,0,0,1)'; dCtx.fill();
+        dCtx.restore();
+    }
+
+    function clearAll() {
+        dCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        saveCanvas();
+    }
+
+    // ===== 手部追踪 =====
+    function onResults(res) {
+        if (res.multiHandLandmarks?.[0]) {
+            handActive = true;
+            lastLandmarks = res.multiHandLandmarks[0];
+            let lm = m(lastLandmarks); // 镜像 X 坐标
+            handFrames++;
+
+            // 手指关键点
+            const thumbTip = lm[4], indexTip = lm[8];
+
+            // === 五指全捏（橡皮）：所有5个指尖聚拢 ===
+            const tips = [4,8,12,16,20];
+            let spread = 0;
+            for (let i = 0; i < tips.length; i++)
+                for (let j = i+1; j < tips.length; j++)
+                    spread += Math.hypot(lm[tips[i]].x-lm[tips[j]].x, lm[tips[i]].y-lm[tips[j]].y);
+            const isFivePinch = spread < 0.65;
+
+            // === 两指捏合（画笔）：拇指+食指靠近，且不能是五指全捏 ===
+            const pinchDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
+            const isPenPinch = pinchDist < 0.10 && !isFivePinch;
+
+            // === 手掌摊开 ===
+            const isOpen = spread > 1.5 && !isPenPinch && !isFivePinch;
+
+            // === 模式切换 ===
+            if (isPenPinch) {
+                mode = 'pen';
+            } else if (isFivePinch) {
+                mode = 'eraser';
+            }
+
+            document.getElementById('mode-pen').className = `mode ${mode==='pen'?'active':'inactive'}`;
+            document.getElementById('mode-eraser').className = `mode ${mode==='eraser'?'active':'inactive'}`;
+
+            // === 执行 ===
+            if (isPenPinch && handFrames > 3) {
+                // 捏合 = 写字 (不管当前mode是什么)
+                const x = indexTip.x * drawCanvas.width;
+                const y = indexTip.y * drawCanvas.height;
+
+                if (!isDrawing) {
+                    isDrawing = true;
+                    dCtx.beginPath(); dCtx.arc(x, y, penSize, 0, Math.PI*2);
+                    dCtx.fillStyle = penColor; dCtx.fill();
+                } else {
+                    drawSmoothLine(lastX, lastY, x, y, penColor, penSize);
+                }
+                lastX = x; lastY = y;
+                document.getElementById('status-text').textContent = '✏️ 书写中';
+            } else if (isFivePinch) {
+                // 五指捏合 = 擦除
+                const x = lm[9].x * drawCanvas.width;
+                const y = lm[9].y * drawCanvas.height;
+                eraseAt(x, y, eraserSize);
+                lastX = x; lastY = y;
+                isDrawing = false;
+                document.getElementById('status-text').textContent = '🤏 五指擦除中';
+            } else {
+                if (isDrawing) saveCanvas();
+                isDrawing = false;
+                document.getElementById('status-text').textContent = '✋ 待命中';
+            }
+
+            // === 清空 (手掌摊开3秒) ===
+            if (isOpen) {
+                if (clearHoldStart === 0) clearHoldStart = performance.now();
+                clearHoldTimer = (performance.now() - clearHoldStart) / 1000;
+                if (clearHoldTimer > 3.0) {
+                    clearHoldStart = 0;
+                    clearHoldTimer = 0;
+                    clearAll();
+                }
+            } else {
+                clearHoldStart = 0;
+                clearHoldTimer = 0;
+            }
+
+        } else {
+            handActive = false;
+            lastLandmarks = null;
+            handFrames = 0;
+            isDrawing = false;
+            document.getElementById('status-text').textContent = '--';
+        }
+        drawHandSkeleton(lastLandmarks);
+    }
+
+    // ===== 初始化 =====
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    saveCanvas();
+
+    async function init() {
+        const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.6 });
+        hands.onResults(onResults);
+        await new Camera(document.getElementById('webcam'), { onFrame: () => hands.send({ image: document.getElementById('webcam') }), width: 640, height: 480 }).start();
+        document.getElementById('loading').classList.add('hidden');
+    }
+    init().catch(() => { document.getElementById('loading').classList.add('hidden'); });
+    </script>
+</body>
+</html>
