@@ -35,7 +35,7 @@ body { overflow:hidden;background:#08080e;font-family:system-ui,sans-serif;touch
 <button class="mode-btn" data-mode="2">🌀 螺旋</button>
 <button class="mode-btn" data-mode="3">🌊 波光</button>
 </div>
-<div id="hint">🖐 挥手旋转 · 🤏 捏合停止 · ✊ 握拳换色 · 🖱 双击停止 · ⌨ 空格换色 · ↔ 方向键操控</div>
+<div id="hint">👆 滑动旋转 · 🖐 挥手旋转 · 🤏 捏合停止 · ✊ 握拳换色 · ⌨ 空格换色/方向键</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
@@ -241,6 +241,26 @@ document.addEventListener('mousemove', e => {
     }
 });
 document.addEventListener('mouseleave', () => { mouseDown=false; });
+
+// 触摸屏滑动操控
+let touchId=null, touchStartX=0, touchStartY=0;
+document.addEventListener('touchstart', e => {
+    const t = e.changedTouches[0];
+    if(t){ touchId=t.identifier; touchStartX=t.clientX; touchStartY=t.clientY;
+        handActive=false; lastLandmarks=null; }
+},{passive:true});
+document.addEventListener('touchmove', e => {
+    for(const t of e.changedTouches){
+        if(t.identifier===touchId){
+            const dx=t.clientX-touchStartX, dy=t.clientY-touchStartY;
+            touchStartX=t.clientX; touchStartY=t.clientY;
+            vx+=dy*0.0008; vy+=dx*0.0008;
+        }
+    }
+},{passive:true});
+document.addEventListener('touchend', e => {
+    for(const t of e.changedTouches){ if(t.identifier===touchId){ touchId=null; break; } }
+},{passive:true});
 
 function onResults(res) {
     if (res.multiHandLandmarks?.[0]) {
