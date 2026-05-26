@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>手势黑板</title>
+    <title>????</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { overflow: hidden; background: #1a1a2e; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
@@ -90,28 +90,36 @@
     </style>
 </head>
 <body>
-    <a id="back-btn" href="index.html">← 返回</a>
-    <div id="loading"><div class="spinner"></div><div>载入中...</div></div>
+    <a id="back-btn" href="index.html">? ??</a>
+    <div id="loading"><div class="spinner"></div><div>???...</div></div>
     <div id="webcam-container"><video id="webcam" playsinline></video></div>
 
     <canvas id="draw-canvas"></canvas>
     <canvas id="hand-overlay"></canvas>
 
     <div id="toolbar">
-        <span class="mode active" id="mode-pen">✏️ 两指写字</span>
-        <span class="mode inactive" id="mode-eraser">🤏 五指擦除</span>
+        <span class="mode active" id="mode-pen">?? ????</span>
+        <span class="mode inactive" id="mode-eraser">?? ????</span>
         <span class="sep"></span>
-        <button class="action" onclick="clearAll()">🗑 清空</button>
-        <button class="action" onclick="cycleColor()">🎨 换色</button>
+        <button class="action" onclick="clearAll()">?? ??</button>
+        <button class="action" onclick="cycleColor()">?? ??</button>
     </div>
-    <div id="status">模式: <span id="status-text">等待</span></div>
-    <div id="hint">🤏 两指捏合 = 写字 · 🖐 五指捏合 = 擦除 · 🖐 摊开3秒 = 清空</div>
+    <div id="status">??: <span id="status-text">??</span></div>
+    <!-- DEBUG OVERLAY -->
+    <div id="debug" style="position:fixed;top:60px;right:16px;z-index:99;background:rgba(0,0,0,0.75);color:#0f0;font:11px/1.6 monospace;padding:8px 12px;border-radius:6px;min-width:180px;border:1px solid rgba(255,255,255,0.05);pointer-events:none">
+      <div>?? ?: <span id="dbg-frames">0</span></div>
+      <div>?? ??: <span id="dbg-onsend" style="color:#888">??...</span></div>
+      <div>? ??: <span id="dbg-hand" style="color:#888">?</span></div>
+      <div>?? spread: <span id="dbg-spread">-</span></div>
+      <div>?? pinch: <span id="dbg-pinch">-</span></div>
+      <div>?? ??: <span id="dbg-mode">-</span></div>
+    </div>    <div id="hint">?? ???? = ?? ? ?? ???? = ?? ? ?? ??3? = ??</div>
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 
     <script>
-    // ===== Canvas 设置 =====
+    // ===== Canvas ?? =====
     const drawCanvas = document.getElementById('draw-canvas');
     const dCtx = drawCanvas.getContext('2d');
     const overlay = document.getElementById('hand-overlay');
@@ -122,7 +130,7 @@
         drawCanvas.height = window.innerHeight;
         overlay.width = window.innerWidth;
         overlay.height = window.innerHeight;
-        // 恢复绘制内容
+        // ??????
         if (savedImageData) {
             dCtx.putImageData(savedImageData, 0, 0);
         }
@@ -130,51 +138,51 @@
     let savedImageData = null;
     function saveCanvas() { savedImageData = dCtx.getImageData(0, 0, drawCanvas.width, drawCanvas.height); }
 
-    // ===== 颜色 =====
+    // ===== ?? =====
     const penColors = ['#ffffff', '#ff1744', '#ff6d00', '#ffea00', '#00e676', '#2979ff', '#9c27b0'];
     let colorIdx = 0;
     let penColor = penColors[0];
     function cycleColor() {
         colorIdx = (colorIdx + 1) % penColors.length;
         penColor = penColors[colorIdx];
-        document.getElementById('mode-pen').textContent = `✏️ ${penColor}`;
+        document.getElementById('mode-pen').textContent = `?? ${penColor}`;
     }
 
-    // ===== 手部绘制 =====
+    // ===== ???? =====
     const HAND_CONNECTIONS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]];
-    // 镜像 X 坐标：摄像头画面是镜像的，坐标也要镜像
+    // ?? X ???????????????????
     function m(lm) { return lm ? lm.map(p => ({x: 1 - p.x, y: p.y, z: p.z})) : lm; }
 
-    // ===== 绘制状态 =====
+    // ===== ???? =====
     let mode = 'pen'; // 'pen' | 'eraser'
     let isDrawing = false;
     let lastX = 0, lastY = 0;
     let penSize = 6;
     let eraserSize = 60;
 
-    // 手势状态
+    // ????
     let clearHoldTimer = 0;
     let clearHoldStart = 0;
     let handActive = false;
     let lastLandmarks = null;
     let handFrames = 0;
 
-    // 为了平滑线条，记录点队列
+    // ????????????
     let points = [];
 
     function drawHandSkeleton(lm) {
         oCtx.clearRect(0, 0, overlay.width, overlay.height);
         if (!lm) return;
-        lm = m(lm); // 镜像 X 坐标
+        lm = m(lm); // ?? X ??
         const w = overlay.width, h = overlay.height;
 
-        // 骨骼
+        // ??
         oCtx.strokeStyle = 'rgba(74,158,255,0.25)'; oCtx.lineWidth = 1.5;
         oCtx.beginPath();
         for (const [i,j] of HAND_CONNECTIONS) { oCtx.moveTo(lm[i].x*w, lm[i].y*h); oCtx.lineTo(lm[j].x*w, lm[j].y*h); }
         oCtx.stroke();
 
-        // 关节点
+        // ???
         for (let i = 0; i < lm.length; i++) {
             const p = lm[i], x = p.x*w, y = p.y*h;
             const isTip = [4,8,12,16,20].includes(i);
@@ -185,43 +193,43 @@
             if (isTip) { oCtx.strokeStyle = 'rgba(255,255,255,0.4)'; oCtx.lineWidth = 1; oCtx.stroke(); }
         }
 
-        // 绘制光标
-        const tip = lm[8]; // 食指指尖
+        // ????
+        const tip = lm[8]; // ????
         if (tip) {
             const cx = tip.x * w, cy = tip.y * h;
             if (mode === 'pen') {
-                // 画笔光标
+                // ????
                 oCtx.beginPath(); oCtx.arc(cx, cy, penSize*2, 0, Math.PI*2);
                 oCtx.fillStyle = penColor + '40'; oCtx.fill();
                 oCtx.beginPath(); oCtx.arc(cx, cy, 2, 0, Math.PI*2);
                 oCtx.fillStyle = penColor; oCtx.fill();
             } else {
-                // 五指捏合 → 橡皮光标
+                // ???? ? ????
                 oCtx.beginPath(); oCtx.arc(cx, cy, eraserSize/2, 0, Math.PI*2);
                 oCtx.strokeStyle = 'rgba(255,100,100,0.4)'; oCtx.lineWidth = 2; oCtx.setLineDash([4,4]); oCtx.stroke(); oCtx.setLineDash([]);
                 oCtx.beginPath(); oCtx.arc(cx, cy, 3, 0, Math.PI*2);
                 oCtx.fillStyle = 'rgba(255,100,100,0.5)'; oCtx.fill();
-                // 五指标记
+                // ????
                 oCtx.font = '10px sans-serif'; oCtx.textAlign = 'center';
                 oCtx.fillStyle = 'rgba(255,100,100,0.3)';
-                oCtx.fillText('🤏', cx, cy - eraserSize/2 - 6);
+                oCtx.fillText('??', cx, cy - eraserSize/2 - 6);
             }
-            // 显示拇指-食指间距（调试用）
+            // ????-?????????
             const thumb = lm[4];
             if (thumb) {
                 const d = Math.hypot(thumb.x - tip.x, thumb.y - tip.y);
                 const dd = (d * 100).toFixed(0);
                 oCtx.font = '9px monospace'; oCtx.textAlign = 'center';
                 oCtx.fillStyle = d < 0.10 ? 'rgba(100,255,100,0.5)' : 'rgba(255,255,255,0.2)';
-                oCtx.fillText(`↕${dd}`, (thumb.x + tip.x)/2 * w, (thumb.y + tip.y)/2 * h - 12);
-                // 连线
+                oCtx.fillText(`?${dd}`, (thumb.x + tip.x)/2 * w, (thumb.y + tip.y)/2 * h - 12);
+                // ??
                 oCtx.beginPath(); oCtx.moveTo(thumb.x*w, thumb.y*h); oCtx.lineTo(tip.x*w, tip.y*h);
                 oCtx.strokeStyle = d < 0.10 ? 'rgba(100,255,100,0.3)' : 'rgba(255,255,255,0.08)';
                 oCtx.lineWidth = 1; oCtx.stroke();
             }
         }
 
-        // 模式提示
+        // ????
         const palm = lm[9];
         if (palm) {
             const x = palm.x*w, y = palm.y*h;
@@ -229,19 +237,19 @@
             if (clearHoldTimer > 0) {
                 const pct = Math.min(clearHoldTimer / 3, 1);
                 oCtx.fillStyle = `rgba(255,200,50,${0.3 + pct * 0.5})`;
-                oCtx.fillText(`🖐 清空中 ${'█'.repeat(Math.floor(pct*6)) + '░'.repeat(6-Math.floor(pct*6))}`, x, y - 30);
-                // 进度环
+                oCtx.fillText(`?? ??? ${'?'.repeat(Math.floor(pct*6)) + '?'.repeat(6-Math.floor(pct*6))}`, x, y - 30);
+                // ???
                 oCtx.beginPath(); oCtx.arc(x, y - 16, 14, -Math.PI/2, -Math.PI/2 + pct * Math.PI * 2);
                 oCtx.strokeStyle = `rgba(255,200,50,${0.3 + pct * 0.3})`;
                 oCtx.lineWidth = 2; oCtx.stroke();
             } else {
-                const label = mode === 'pen' ? '✏️ 写字中' : '🤏 五指擦除中';
+                const label = mode === 'pen' ? '?? ???' : '?? ?????';
                 oCtx.fillStyle = 'rgba(255,255,255,0.2)'; oCtx.fillText(label, x, y - 30);
             }
         }
     }
 
-    // ===== 画线（使用 canvas 原生绘制，更顺滑） =====
+    // ===== ????? canvas ????????? =====
     function drawSmoothLine(x1, y1, x2, y2, color, size) {
         dCtx.beginPath();
         dCtx.moveTo(x1, y1);
@@ -266,18 +274,18 @@
         saveCanvas();
     }
 
-    // ===== 手部追踪 =====
+    // ===== ???? =====
     function onResults(res) {
         if (res.multiHandLandmarks?.[0]) {
             handActive = true;
             lastLandmarks = res.multiHandLandmarks[0];
-            let lm = m(lastLandmarks); // 镜像 X 坐标
+            let lm = m(lastLandmarks); // ?? X ??
             handFrames++;
 
-            // 手指关键点
+            // ?????
             const thumbTip = lm[4], indexTip = lm[8];
 
-            // === 五指全捏（橡皮）：所有5个指尖聚拢 ===
+            // === ???????????5????? ===
             const tips = [4,8,12,16,20];
             let spread = 0;
             for (let i = 0; i < tips.length; i++)
@@ -285,14 +293,14 @@
                     spread += Math.hypot(lm[tips[i]].x-lm[tips[j]].x, lm[tips[i]].y-lm[tips[j]].y);
             const isFivePinch = spread < 0.65;
 
-            // === 两指捏合（画笔）：拇指+食指靠近，且不能是五指全捏 ===
+            // === ???????????+????????????? ===
             const pinchDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
             const isPenPinch = pinchDist < 0.10 && !isFivePinch;
 
-            // === 手掌摊开 ===
+            // === ???? ===
             const isOpen = spread > 1.5 && !isPenPinch && !isFivePinch;
 
-            // === 模式切换 ===
+            // === ???? ===
             if (isPenPinch) {
                 mode = 'pen';
             } else if (isFivePinch) {
@@ -302,9 +310,9 @@
             document.getElementById('mode-pen').className = `mode ${mode==='pen'?'active':'inactive'}`;
             document.getElementById('mode-eraser').className = `mode ${mode==='eraser'?'active':'inactive'}`;
 
-            // === 执行 ===
+            // === ?? ===
             if (isPenPinch && handFrames > 3) {
-                // 捏合 = 写字 (不管当前mode是什么)
+                // ?? = ?? (????mode???)
                 const x = indexTip.x * drawCanvas.width;
                 const y = indexTip.y * drawCanvas.height;
 
@@ -316,22 +324,25 @@
                     drawSmoothLine(lastX, lastY, x, y, penColor, penSize);
                 }
                 lastX = x; lastY = y;
-                document.getElementById('status-text').textContent = '✏️ 书写中';
+                document.getElementById('status-text').textContent = '?? ???';
+            document.getElementById('dbg-mode').textContent = '?? ??';
             } else if (isFivePinch) {
-                // 五指捏合 = 擦除
+                // ???? = ??
                 const x = lm[9].x * drawCanvas.width;
                 const y = lm[9].y * drawCanvas.height;
                 eraseAt(x, y, eraserSize);
                 lastX = x; lastY = y;
                 isDrawing = false;
-                document.getElementById('status-text').textContent = '🤏 五指擦除中';
+                document.getElementById('status-text').textContent = '?? ?????';
+                document.getElementById('dbg-mode').textContent = '?? ????';
             } else {
                 if (isDrawing) saveCanvas();
                 isDrawing = false;
-                document.getElementById('status-text').textContent = '✋ 待命中';
+                document.getElementById('status-text').textContent = '? ???';
+                document.getElementById('dbg-mode').textContent = '? ??';
             }
 
-            // === 清空 (手掌摊开3秒) ===
+            // === ?? (????3?) ===
             if (isOpen) {
                 if (clearHoldStart === 0) clearHoldStart = performance.now();
                 clearHoldTimer = (performance.now() - clearHoldStart) / 1000;
@@ -355,7 +366,7 @@
         drawHandSkeleton(lastLandmarks);
     }
 
-    // ===== 初始化 =====
+    // ===== ??? =====
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
     saveCanvas();
@@ -365,7 +376,7 @@
         hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.6 });
         hands.onResults(onResults);
 
-        // 直接用 getUserMedia 取代 Camera 工具——手机上更可靠
+        // ??? getUserMedia ?? Camera ??????????
         const video = document.getElementById('webcam');
         const stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
@@ -374,7 +385,7 @@
         video.srcObject = stream;
         await video.play();
 
-        // 定时从 video 取帧发送给 MediaPipe
+        // ??? video ????? MediaPipe
         function sendFrame() {
             if (video.readyState >= 2) {
                 hands.send({ image: video });
@@ -386,9 +397,10 @@
         document.getElementById('loading').classList.add('hidden');
     }
     init().catch(e => {
-        document.getElementById('loading').innerHTML = `<div style="color:#ff6b6b;font-size:14px;padding:20px;text-align:center">❌ 摄像头启动失败<br><span style="font-size:11px;opacity:0.5">${e.message}</span></div>`;
+        document.getElementById('loading').innerHTML = `<div style="color:#ff6b6b;font-size:14px;padding:20px;text-align:center">? ???????<br><span style="font-size:11px;opacity:0.5">${e.message}</span></div>`;
         setTimeout(() => document.getElementById('loading').classList.add('hidden'), 3000);
     });
     </script>
 </body>
 </html>
+
