@@ -35,7 +35,7 @@ body { overflow:hidden;background:#08080e;font-family:system-ui,sans-serif;touch
 <button class="mode-btn" data-mode="2">🌀 螺旋</button>
 <button class="mode-btn" data-mode="3">🌊 波光</button>
 </div>
-<div id="hint">🖐 挥手旋转 · 🤏 捏合停止 · ✊ 握拳换色 · 🖱 双击停止 · ⌨ 空格换色</div>
+<div id="hint">🖐 挥手旋转 · 🤏 捏合停止 · ✊ 握拳换色 · 🖱 双击停止 · ⌨ 空格换色 · ↔ 方向键操控</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
@@ -210,6 +210,7 @@ function setMode(m) {
 modeBtns.forEach(btn => btn.addEventListener('click', () => setMode(parseInt(btn.dataset.mode))));
 
 let vx=0,vy=0,mouseDown=false,handActive=false,lastLandmarks=null,prevHandX=0,prevHandY=0,prevMouseX=0,prevMouseY=0,handFrames=0,fistHoldTimer=0;
+const keys = {};
 
 let lastClickTime = 0;
 document.addEventListener('click', e => {
@@ -226,7 +227,9 @@ function switchTheme() {
 document.addEventListener('keydown', e => {
     if (e.key === ' ') { e.preventDefault(); switchTheme(); }
     if (e.key >= '1' && e.key <= '4') setMode(parseInt(e.key)-1);
+    keys[e.key] = true;
 });
+document.addEventListener('keyup', e => { keys[e.key] = false; });
 
 document.addEventListener('mousedown', e => { if(e.button===0) mouseDown=true; });
 document.addEventListener('mouseup', e => { if(e.button===0) mouseDown=false; });
@@ -276,6 +279,11 @@ function animate() {
     requestAnimationFrame(animate); t+=0.016;
     vx*=0.99; vy*=0.99;
     if(Math.abs(vx)<0.0001)vx=0; if(Math.abs(vy)<0.0001)vy=0;
+    // 键盘8方向操控 (Arrow keys)
+    let kx=0, ky=0;
+    if(keys['ArrowUp']) ky=-1; if(keys['ArrowDown']) ky=1;
+    if(keys['ArrowLeft']) kx=-1; if(keys['ArrowRight']) kx=1;
+    if(kx!==0||ky!==0){ const len=Math.hypot(kx,ky); vx+=ky/len*0.025; vy+=kx/len*0.025; }
     computeTarget(currentMode, t, target);
     const speed = currentMode===1||currentMode===2 ? 0.08 : 0.05;
     const p=geo.attributes.position.array;
