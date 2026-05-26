@@ -375,9 +375,11 @@
         await video.play();
 
         // 定时从 video 取帧发送给 MediaPipe
+        let processing = false;
         function sendFrame() {
-            if (video.readyState >= 2) {
-                hands.send({ image: video });
+            if (video.readyState >= 2 && !processing) {
+                processing = true;
+                hands.send({ image: video }).then(() => { processing = false; }).catch(() => { processing = false; });
             }
             requestAnimationFrame(sendFrame);
         }
