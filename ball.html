@@ -216,7 +216,7 @@
         video.srcObject=stream;
         await video.play();
 
-        let processing=false;function sendFrame(){
+        function sendFrame(){if(!processing)
             if(video.readyState>=2)hands.send({image:video});
             requestAnimationFrame(sendFrame);
         }
