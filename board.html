@@ -352,6 +352,7 @@
             isDrawing = false;
             document.getElementById('status-text').textContent = '--';
         }
+        processing = false;
         drawHandSkeleton(lastLandmarks);
     }
 
@@ -379,7 +380,7 @@
         function sendFrame() {
             if (video.readyState >= 2 && !processing) {
                 processing = true;
-                hands.send({ image: video }).then(() => { processing = false; }).catch(() => { processing = false; });
+                hands.send({ image: video });
             }
             requestAnimationFrame(sendFrame);
         }
