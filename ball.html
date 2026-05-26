@@ -82,6 +82,7 @@
     const HAND_CONNECTIONS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]];
     function m(lm) { return lm ? lm.map(p => ({x: 1 - p.x, y: p.y, z: p.z})) : lm; }
 
+    let processing = false;
     function drawHandSkeleton(landmarks) {
         ctx.clearRect(0, 0, overlay.width, overlay.height);
         if (!landmarks) return;
@@ -216,8 +217,8 @@
         video.srcObject=stream;
         await video.play();
 
-        function sendFrame(){if(!processing)
-            if(video.readyState>=2)hands.send({image:video});
+        function sendFrame(){
+            if(video.readyState>=2&&!processing){processing=true;hands.send({image:video});}
             requestAnimationFrame(sendFrame);
         }
         sendFrame();
