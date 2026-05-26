@@ -176,9 +176,20 @@ computeTarget(0, 0, pos);
 for (let i = 0; i < N*3; i++) target[i] = pos[i];
 geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
 geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+function makeCircleTex() {
+    const c=document.createElement('canvas'); c.width=32; c.height=32;
+    const x=c.getContext('2d');
+    const g=x.createRadialGradient(16,16,0,16,16,16);
+    g.addColorStop(0,'rgba(255,255,255,1)');
+    g.addColorStop(0.3,'rgba(255,255,255,1)');
+    g.addColorStop(1,'rgba(255,255,255,0)');
+    x.fillStyle=g; x.fillRect(0,0,32,32);
+    return new THREE.CanvasTexture(c);
+}
 const mat = new THREE.PointsMaterial({
     size:0.035, vertexColors:true, transparent:true,
     blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true, opacity:0.85,
+    map:makeCircleTex(),
 });
 const points = new THREE.Points(geo, mat);
 scene.add(points);
