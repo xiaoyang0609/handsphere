@@ -1,341 +1,284 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Orbit — 手势控球</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { overflow: hidden; background: #08080e; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
-        #three-canvas { display: block; position: fixed; inset: 0; z-index: 1; }
-        #hand-overlay { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
-        #webcam-container {
-            position: fixed; bottom: 20px; right: 20px;
-            width: 160px; height: 120px;
-            border-radius: 10px; overflow: hidden;
-            border: 1px solid rgba(255,255,255,0.1);
-            z-index: 3; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        }
-        #webcam-container video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-        #loading {
-            position: fixed; inset: 0; z-index: 100;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            background: #08080e; color: #fff; transition: opacity 0.8s;
-        }
-        #loading.hidden { opacity: 0; pointer-events: none; }
-        #loading .spinner {
-            width: 28px; height: 28px;
-            border: 2px solid rgba(255,255,255,0.06); border-top-color: #4a9eff;
-            border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 14px;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        #back-btn {
-            position: fixed; top: 20px; left: 20px; z-index: 5;
-            color: rgba(255,255,255,0.3); font-size: 13px;
-            text-decoration: none; padding: 8px 16px;
-            border: 1px solid rgba(255,255,255,0.08); border-radius: 20px;
-            transition: all 0.3s; backdrop-filter: blur(8px);
-        }
-        #back-btn:hover { border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.6); }
-        #hint {
-            position: fixed; bottom: 30px; left: 50%;
-            transform: translateX(-50%);
-            color: rgba(255,255,255,0.08); font-size: 11px; z-index: 3;
-            pointer-events: none; transition: opacity 2s;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orbit — 手势控球</title>
+<style>
+* { margin:0;padding:0;box-sizing:border-box; }
+body { overflow:hidden;background:#08080e;font-family:system-ui,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none; }
+#three-canvas { display:block;position:fixed;inset:0;z-index:1; }
+#hand-overlay { position:fixed;inset:0;z-index:2;pointer-events:none; }
+#webcam-container { position:fixed;bottom:20px;right:20px;width:160px;height:120px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);z-index:3;box-shadow:0 4px 20px rgba(0,0,0,0.5); }
+#webcam-container video { width:100%;height:100%;object-fit:cover;transform:scaleX(-1); }
+#loading { position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#08080e;color:#fff;transition:opacity 0.8s; }
+#loading.hidden { opacity:0;pointer-events:none; }
+#loading .spinner { width:28px;height:28px;border:2px solid rgba(255,255,255,0.06);border-top-color:#4a9eff;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:14px; }
+@keyframes spin { to{transform:rotate(360deg);} }
+#back-btn { position:fixed;top:20px;left:20px;z-index:5;color:rgba(255,255,255,0.3);font-size:13px;text-decoration:none;padding:8px 16px;border:1px solid rgba(255,255,255,0.08);border-radius:20px;transition:all 0.3s;backdrop-filter:blur(8px); }
+#back-btn:hover { border-color:rgba(255,255,255,0.2);color:rgba(255,255,255,0.6); }
+#toolbar { position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:5;display:flex;gap:6px;align-items:center;background:rgba(0,0,0,0.5);backdrop-filter:blur(12px);padding:6px 12px;border-radius:24px;border:1px solid rgba(255,255,255,0.06); }
+#toolbar .mode-btn { padding:5px 12px;border-radius:18px;font-size:12px;letter-spacing:0.5px;transition:all 0.3s;cursor:pointer;border:none;background:transparent;color:rgba(255,255,255,0.25); }
+#toolbar .mode-btn.active { background:rgba(255,255,255,0.1);color:#fff; }
+#toolbar .mode-btn:hover { color:rgba(255,255,255,0.5);background:rgba(255,255,255,0.05); }
+#hint { position:fixed;bottom:30px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.08);font-size:11px;z-index:3;pointer-events:none;text-align:center; }
+</style>
 </head>
 <body>
-    <a id="back-btn" href="index.html">← 返回</a>
-    <div id="loading"><div class="spinner"></div><div>载入中...</div></div>
-    <div id="webcam-container"><video id="webcam" playsinline></video></div>
-    <canvas id="hand-overlay"></canvas>
-    <div id="hint">🖐 挥手旋转 · 🤏 捏合停止 · ✊ 握拳换色</div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.js" crossorigin="anonymous"></script>
-
-    <script>
-    // ===== Three.js =====
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x08080e);
-    const cam = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
-    cam.position.z = 4.5;
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+<a id="back-btn" href="index.html">← 返回</a>
+<div id="loading"><div class="spinner"></div><div>载入中...</div></div>
+<div id="webcam-container"><video id="webcam" playsinline></video></div>
+<canvas id="hand-overlay"></canvas>
+<div id="toolbar">
+<button class="mode-btn active" data-mode="0">🌌 星云</button>
+<button class="mode-btn" data-mode="1">💥 爆散</button>
+<button class="mode-btn" data-mode="2">🌀 螺旋</button>
+<button class="mode-btn" data-mode="3">🌊 波光</button>
+</div>
+<div id="hint">🖐 挥手旋转 · 🤏 捏合停止 · ✊ 握拳换色 · 🖱 双击停止 · ⌨ 空格换色</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.js" crossorigin="anonymous"></script>
+<script>
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x08080e);
+const cam = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+cam.position.z = 4.5;
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
+renderer.domElement.id = 'three-canvas';
+document.body.prepend(renderer.domElement);
+window.addEventListener('resize', () => {
+    cam.aspect = window.innerWidth / window.innerHeight;
+    cam.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
-    renderer.domElement.id = 'three-canvas';
-    document.body.prepend(renderer.domElement);
-    window.addEventListener('resize', () => {
-        cam.aspect = window.innerWidth / window.innerHeight;
-        cam.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        overlay.width = window.innerWidth; overlay.height = window.innerHeight;
-    });
-
-    // ===== 手部骨骼绘制 =====
-    const overlay = document.getElementById('hand-overlay');
-    const ctx = overlay.getContext('2d');
     overlay.width = window.innerWidth; overlay.height = window.innerHeight;
-    const HAND_CONNECTIONS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]];
-    function m(lm) { return lm ? lm.map(p => ({x: 1 - p.x, y: p.y, z: p.z})) : lm; }
+});
+const overlay = document.getElementById('hand-overlay');
+const ctx = overlay.getContext('2d');
+overlay.width = window.innerWidth; overlay.height = window.innerHeight;
+const HAND_CONNECTIONS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]];
+function m(lm) { return lm ? lm.map(p => ({x: 1 - p.x, y: p.y, z: p.z})) : lm; }
 
-    let processing = false;
-    function drawHandSkeleton(landmarks) {
-        ctx.clearRect(0, 0, overlay.width, overlay.height);
-        if (!landmarks) return;
-        landmarks = m(landmarks);
-        const w = overlay.width, h = overlay.height;
-        ctx.strokeStyle = 'rgba(74, 158, 255, 0.35)'; ctx.lineWidth = 2;
-        ctx.beginPath();
-        for (const [i,j] of HAND_CONNECTIONS) {
-            ctx.moveTo(landmarks[i].x*w, landmarks[i].y*h);
-            ctx.lineTo(landmarks[j].x*w, landmarks[j].y*h);
-        }
-        ctx.stroke();
-        for (let i = 0; i < landmarks.length; i++) {
-            const p = landmarks[i], x = p.x*w, y = p.y*h;
-            const isTip = [4,8,12,16,20].includes(i);
-            const isPalm = [0,5,9,13,17].includes(i);
-            ctx.beginPath(); ctx.arc(x, y, isTip ? 6 : isPalm ? 3 : 2, 0, Math.PI*2);
-            ctx.fillStyle = isTip ? 'rgba(255,200,50,0.8)' : isPalm ? 'rgba(74,158,255,0.6)' : 'rgba(255,255,255,0.4)';
-            ctx.fill();
-            if (isTip) { ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.5; ctx.stroke(); }
-        }
-        const palm = landmarks[9];
-        if (palm) {
-            const x = palm.x*w, y = palm.y*h;
-            const tips = [4,8,12,16,20];
-            let cluster = 0;
-            for (let i = 0; i < tips.length; i++)
-                for (let j = i+1; j < tips.length; j++)
-                    cluster += Math.hypot(landmarks[tips[i]].x-landmarks[tips[j]].x, landmarks[tips[i]].y-landmarks[tips[j]].y);
-            let curled = 0;
-            for (let i = 1; i < 5; i++) {
-                const tip = landmarks[[8,12,16,20][i-1]], pip = landmarks[[6,10,14,18][i-1]];
-                if (tip.y > pip.y + 0.02) curled++;
-            }
-            if (Math.hypot(landmarks[4].x-landmarks[1].x, landmarks[4].y-landmarks[1].y) < 0.04) curled++;
-            ctx.font = '11px system-ui, sans-serif'; ctx.textAlign = 'center';
-            if (cluster < 0.6) {
-                ctx.fillStyle = 'rgba(255,100,100,0.5)'; ctx.fillText('🤏 捏合 = 停止', x, y-30);
-                ctx.beginPath(); ctx.arc(x, y, 20, 0, Math.PI*2);
-                ctx.strokeStyle = 'rgba(255,100,100,0.15)'; ctx.lineWidth = 2; ctx.stroke();
-            } else if (curled >= 4) {
-                const names = ['🔴红','🟠橙','🟡黄','🟢绿','🔵蓝','🟣靛','🟣紫'];
-                ctx.fillStyle = 'rgba(255,200,50,0.5)'; ctx.fillText(`✊ 握拳换色 → ${names[tIdx]}`, x, y-30);
-            } else {
-                ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillText('✋ 控制中', x, y-30);
-            }
+let processing = false;
+function drawHandSkeleton(landmarks) {
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    if (!landmarks) return;
+    landmarks = m(landmarks);
+    const w = overlay.width, h = overlay.height;
+    ctx.strokeStyle = 'rgba(74, 158, 255, 0.35)'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (const [i,j] of HAND_CONNECTIONS) {
+        ctx.moveTo(landmarks[i].x*w, landmarks[i].y*h);
+        ctx.lineTo(landmarks[j].x*w, landmarks[j].y*h);
+    }
+    ctx.stroke();
+    for (let i = 0; i < landmarks.length; i++) {
+        const p = landmarks[i], x = p.x*w, y = p.y*h;
+        const isTip = [4,8,12,16,20].includes(i);
+        const isPalm = [0,5,9,13,17].includes(i);
+        ctx.beginPath(); ctx.arc(x, y, isTip ? 6 : isPalm ? 3 : 2, 0, Math.PI*2);
+        ctx.fillStyle = isTip ? 'rgba(255,200,50,0.8)' : isPalm ? 'rgba(74,158,255,0.6)' : 'rgba(255,255,255,0.4)';
+        ctx.fill(); if (isTip) { ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.5; ctx.stroke(); }
+    }
+    const palm = landmarks[9];
+    if (palm) {
+        const x = palm.x*w, y = palm.y*h;
+        const tips = [4,8,12,16,20];
+        let cluster = 0;
+        for (let i = 0; i < tips.length; i++) for (let j = i+1; j < tips.length; j++) cluster += Math.hypot(landmarks[tips[i]].x-landmarks[tips[j]].x, landmarks[tips[i]].y-landmarks[tips[j]].y);
+        let curled = 0;
+        for (let i = 1; i < 5; i++) { const tip = landmarks[[8,12,16,20][i-1]], pip = landmarks[[6,10,14,18][i-1]]; if (tip.y > pip.y + 0.02) curled++; }
+        if (Math.hypot(landmarks[4].x-landmarks[1].x, landmarks[4].y-landmarks[1].y) < 0.04) curled++;
+        ctx.font = '11px system-ui, sans-serif'; ctx.textAlign = 'center';
+        if (cluster < 0.6) {
+            ctx.fillStyle = 'rgba(255,100,100,0.5)'; ctx.fillText("🤏 捏合 = 停止", x, y-30);
+            ctx.beginPath(); ctx.arc(x, y, 20, 0, Math.PI*2);
+            ctx.strokeStyle = 'rgba(255,100,100,0.15)'; ctx.lineWidth = 2; ctx.stroke();
+        } else if (curled >= 4) {
+            const names = ["🔴红","🟠橙","🟡黄","🟢绿","🔵蓝","🟣靛","🟣紫"];
+            ctx.fillStyle = 'rgba(255,200,50,0.5)'; ctx.fillText("✊ 握拳换色 \u2192 " + names[tIdx], x, y-30);
+        } else {
+            ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillText("✋ 控制中", x, y-30);
         }
     }
+}
+const N = 4000;
+const pos = new Float32Array(N*3), vel = new Float32Array(N*3);
+const col = new Float32Array(N*3), tcol = new Float32Array(N*3);
+const target = new Float32Array(N*3);
+const thetaArr = new Float32Array(N), phiArr = new Float32Array(N), phase = new Float32Array(N);
+const themes = [[0xff1744],[0xff6d00],[0xffea00],[0x00e676],[0x2979ff],[0x3d5afe],[0x9c27b0]];
+let tIdx = 0, theme = themes[0];
 
-    // ===== 球体（流光星云版） =====
-    const N = 4000, R = 1.5;
-    const geo = new THREE.BufferGeometry();
-    const pos = new Float32Array(N*3), col = new Float32Array(N*3), tcol = new Float32Array(N*3);
-    const themes = [[0xff1744],[0xff6d00],[0xffea00],[0x00e676],[0x2979ff],[0x3d5afe],[0x9c27b0]];
-    let tIdx = 0, theme = themes[0];
+for (let i = 0; i < N; i++) {
+    phiArr[i] = Math.acos(1-2*(i+0.5)/N);
+    thetaArr[i] = Math.PI*(1+Math.sqrt(5))*i;
+    phase[i] = Math.random() * Math.PI * 2;
+}
 
-    function getParticleColor(t, phi) {
-        const c = new THREE.Color(t[0]);
-        const mix = Math.abs(Math.cos(phi)) * 0.5 + 0.2;
-        c.lerp(new THREE.Color(1,1,0.8), mix);
-        return c;
-    }
+function getParticleColor(t, phi) {
+    const c = new THREE.Color(t[0]);
+    c.lerp(new THREE.Color(1,1,0.8), Math.abs(Math.cos(phi)) * 0.5 + 0.2);
+    return c;
+}
+function initColors(t) {
     for (let i = 0; i < N; i++) {
-        const phi = Math.acos(1-2*(i+0.5)/N), theta = Math.PI*(1+Math.sqrt(5))*i;
-        const rOff = R * (0.96 + Math.random()*0.08);
-        pos[i*3]=Math.sin(phi)*Math.cos(theta)*rOff;
-        pos[i*3+1]=Math.sin(phi)*Math.sin(theta)*rOff;
-        pos[i*3+2]=Math.cos(phi)*rOff;
-        const c = getParticleColor(theme, phi);
+        const c = getParticleColor(t, phiArr[i]);
         col[i*3]=tcol[i*3]=c.r; col[i*3+1]=tcol[i*3+1]=c.g; col[i*3+2]=tcol[i*3+2]=c.b;
     }
-    geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
-    geo.setAttribute('color', new THREE.BufferAttribute(col,3));
-    const sphere = new THREE.Points(geo, new THREE.PointsMaterial({
-        size:0.032, vertexColors:true, transparent:true,
-        blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true, opacity:0.85,
-    }));
-    scene.add(sphere);
+}
 
-    // 发光内核
-    const Ncore = 600;
-    const cGeo = new THREE.BufferGeometry();
-    const cPos = new Float32Array(Ncore*3), cCol = new Float32Array(Ncore*3);
-    for (let i = 0; i < Ncore; i++) {
-        const theta = Math.random()*Math.PI*2, phi = Math.acos(2*Math.random()-1);
-        const r = R * 0.55 * Math.cbrt(Math.random());
-        cPos[i*3]=Math.sin(phi)*Math.cos(theta)*r;
-        cPos[i*3+1]=Math.sin(phi)*Math.sin(theta)*r;
-        cPos[i*3+2]=Math.cos(phi)*r;
-        const c = new THREE.Color(theme[0]); c.lerp(new THREE.Color(1,1,1), 0.7); c.multiplyScalar(0.6+Math.random()*0.4);
-        cCol[i*3]=c.r; cCol[i*3+1]=c.g; cCol[i*3+2]=c.b;
-    }
-    cGeo.setAttribute('position', new THREE.BufferAttribute(cPos,3));
-    cGeo.setAttribute('color', new THREE.BufferAttribute(cCol,3));
-    const core = new THREE.Points(cGeo, new THREE.PointsMaterial({
-        size:0.055, vertexColors:true, transparent:true,
-        blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true, opacity:0.25,
-    }));
-    scene.add(core);
-
-    // 外晕
-    const Nhalo = 250;
-    const hGeo = new THREE.BufferGeometry();
-    const hPos = new Float32Array(Nhalo*3), hCol = new Float32Array(Nhalo*3);
-    for (let i = 0; i < Nhalo; i++) {
-        const theta = Math.random()*Math.PI*2, phi = Math.acos(2*Math.random()-1);
-        const r = R * (1.15 + Math.random()*0.6);
-        hPos[i*3]=Math.sin(phi)*Math.cos(theta)*r;
-        hPos[i*3+1]=Math.sin(phi)*Math.sin(theta)*r;
-        hPos[i*3+2]=Math.cos(phi)*r;
-        const c = new THREE.Color(theme[0]); c.lerp(new THREE.Color(1,1,1), 0.5);
-        hCol[i*3]=c.r*0.3; hCol[i*3+1]=c.g*0.3; hCol[i*3+2]=c.b*0.3;
-    }
-    hGeo.setAttribute('position', new THREE.BufferAttribute(hPos,3));
-    hGeo.setAttribute('color', new THREE.BufferAttribute(hCol,3));
-    const halo = new THREE.Points(hGeo, new THREE.PointsMaterial({
-        size:0.05, vertexColors:true, transparent:true, opacity:0.12,
-        blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true,
-    }));
-    scene.add(halo);
-
-    // 轨道粒子环
-    function makeOrbit(r, color, tilt) {
-        const n = 150;
-        const g = new THREE.BufferGeometry();
-        const p = new Float32Array(n*3);
-        for (let i = 0; i < n; i++) {
-            const a = i/n*Math.PI*2 + Math.random()*0.05;
-            p[i*3]=Math.cos(a)*r; p[i*3+1]=(Math.random()-0.5)*0.15; p[i*3+2]=Math.sin(a)*r;
+const R = 1.5;
+function computeTarget(mode, time, out) {
+    if (mode === 0) {
+        for (let i = 0; i < N; i++) {
+            const r = R * (0.96 + Math.sin(phase[i] + time*0.3)*0.04);
+            out[i*3]=Math.sin(phiArr[i])*Math.cos(thetaArr[i])*r;
+            out[i*3+1]=Math.sin(phiArr[i])*Math.sin(thetaArr[i])*r;
+            out[i*3+2]=Math.cos(phiArr[i])*r;
         }
-        g.setAttribute('position', new THREE.BufferAttribute(p,3));
-        const pts = new THREE.Points(g, new THREE.PointsMaterial({
-            color, size:0.025, transparent:true, opacity:0.15,
-            blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true,
-        }));
-        pts.rotation.x = tilt;
-        return pts;
-    }
-    const orbit1 = makeOrbit(2.0, 0x4a9eff, 0.3);
-    const orbit2 = makeOrbit(2.3, 0x6c5ce7, -0.5);
-    scene.add(orbit1); scene.add(orbit2);
-
-    // 闪烁星空
-    const starGeo = new THREE.BufferGeometry();
-    const starPos = new Float32Array(400*3);
-    for(let i=0;i<400;i++){
-        starPos[i*3]=(Math.random()-0.5)*60;
-        starPos[i*3+1]=(Math.random()-0.5)*60;
-        starPos[i*3+2]=(Math.random()-0.5)*60 - 15;
-    }
-    starGeo.setAttribute('position',new THREE.BufferAttribute(starPos,3));
-    const starMat = new THREE.PointsMaterial({
-        color:0xffffff, size:0.02, transparent:true, opacity:0.15,
-        blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true,
-    });
-    const starField = new THREE.Points(starGeo, starMat);
-    scene.add(starField);
-
-    // ===== 控制 =====
-    let vx=0,vy=0,mouseDown=false,handActive=false,lastLandmarks=null,prevHandX=0,prevHandY=0,prevMouseX=0,prevMouseY=0,handFrames=0,fistHoldTimer=0;
-
-    function switchTheme() {
-        tIdx=(tIdx+1)%themes.length;theme=themes[tIdx];
-        for(let i=0;i<N;i++){const c=getParticleColor(theme, Math.acos(1-2*(i+0.5)/N));tcol[i*3]=c.r;tcol[i*3+1]=c.g;tcol[i*3+2]=c.b;}
-        for(let i=0;i<Ncore;i++){const c=new THREE.Color(theme[0]);c.lerp(new THREE.Color(1,1,1),0.7);c.multiplyScalar(0.6+Math.random()*0.4);cCol[i*3]=c.r;cCol[i*3+1]=c.g;cCol[i*3+2]=c.b;}
-        cGeo.attributes.color.needsUpdate=true;
-        for(let i=0;i<Nhalo;i++){const c=new THREE.Color(theme[0]);c.lerp(new THREE.Color(1,1,1),0.5);hCol[i*3]=c.r*0.3;hCol[i*3+1]=c.g*0.3;hCol[i*3+2]=c.b*0.3;}
-        hGeo.attributes.color.needsUpdate=true;
-    }
-    document.addEventListener('mousedown',e=>{if(e.button===0)mouseDown=true;});
-    document.addEventListener('mouseup',e=>{if(e.button===0)mouseDown=false;});
-    document.addEventListener('mousemove',e=>{
-        if(mouseDown){handActive=false;lastLandmarks=null;
-            const dx=e.clientX-prevMouseX,dy=e.clientY-prevMouseY;
-            prevMouseX=e.clientX;prevMouseY=e.clientY;
-            vx+=dy*0.0008;vy+=dx*0.0008;
+    } else if (mode === 1) {
+        for (let i = 0; i < N; i++) {
+            const b = 0.15 + 0.85 * (0.5 + 0.5 * Math.sin(time * 1.2 + phase[i]));
+            const r = R * b;
+            out[i*3]=Math.sin(phiArr[i])*Math.cos(thetaArr[i])*r;
+            out[i*3+1]=Math.sin(phiArr[i])*Math.sin(thetaArr[i])*r;
+            out[i*3+2]=Math.cos(phiArr[i])*r;
         }
-    });
-    document.addEventListener('mouseleave',()=>{mouseDown=false;});
-    document.addEventListener('keydown',e=>{if(e.key===' '||e.key==='c'){e.preventDefault();switchTheme();}});
-
-    function onResults(res) {
-        if (res.multiHandLandmarks?.[0]) {
-            handActive=true;lastLandmarks=res.multiHandLandmarks[0];
-            const lm = m(lastLandmarks), palm=lm[9];
-            handFrames++;
-            const tips=[4,8,12,16,20];let cluster=0;
-            for(let i=0;i<tips.length;i++)for(let j=i+1;j<tips.length;j++)cluster+=Math.hypot(lm[tips[i]].x-lm[tips[j]].x,lm[tips[i]].y-lm[tips[j]].y);
-            const isPinched=cluster<0.6;
-            let curled=0;
-            for(let i=1;i<5;i++){const tip=lm[[8,12,16,20][i-1]],pip=lm[[6,10,14,18][i-1]];if(tip.y>pip.y+0.02)curled++;}
-            if(Math.hypot(lm[4].x-lm[1].x,lm[4].y-lm[1].y)<0.04)curled++;
-            const isFist=curled>=4;
-            if(isFist&&!isPinched){fistHoldTimer+=0.016;if(fistHoldTimer>0.6){fistHoldTimer=0;switchTheme();}}
-            else fistHoldTimer=0;
-            if(isPinched){vx*=0.95;vy*=0.95;if(Math.abs(vx)<0.001)vx=0;if(Math.abs(vy)<0.001)vy=0;}
-            if(handFrames<=2){prevHandX=palm.x;prevHandY=palm.y;}
-            else if(!isPinched&&!isFist){const dx=palm.x-prevHandX,dy=palm.y-prevHandY;prevHandX=palm.x;prevHandY=palm.y;vx+=dy*0.25;vy+=dx*0.25;}
-            else{prevHandX=palm.x;prevHandY=palm.y;}
-        } else {handActive=false;lastLandmarks=null;handFrames=0;fistHoldTimer=0;}
-        processing=false;drawHandSkeleton(lastLandmarks);
-    }
-
-    async function init() {
-        const hands=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${f}`});
-        hands.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:0.7,minTrackingConfidence:0.6});
-        hands.onResults(onResults);
-
-        const video=document.getElementById('webcam');
-        const stream=await navigator.mediaDevices.getUserMedia({
-            video:{facingMode:'user',width:{ideal:640},height:{ideal:480}},
-            audio:false,
-        });
-        video.srcObject=stream;
-        await video.play();
-
-        function sendFrame(){
-            if(video.readyState>=2&&!processing){processing=true;hands.send({image:video});}
-            requestAnimationFrame(sendFrame);
+    } else if (mode === 2) {
+        for (let i = 0; i < N; i++) {
+            const arm = Math.floor(phase[i] / (Math.PI*2/3)) % 3;
+            const baseAngle = thetaArr[i] * 0.3 + arm * Math.PI*2/3 + time * 0.2;
+            const radius = R * (0.1 + 0.9 * (i/N));
+            const spread = 0.04 * radius * R;
+            const x = Math.cos(baseAngle) * radius + (Math.random()-0.5)*spread;
+            const z = Math.sin(baseAngle) * radius + (Math.random()-0.5)*spread;
+            const y = (Math.random()-0.5) * 0.08 * (1 - radius/R);
+            out[i*3]=x; out[i*3+1]=y; out[i*3+2]=z;
         }
-        sendFrame();
-
-        document.getElementById('loading').classList.add('hidden');
+    } else if (mode === 3) {
+        for (let i = 0; i < N; i++) {
+            const wave = Math.sin(thetaArr[i]*6 + time*1.5) * Math.cos(phiArr[i]*4 + time*1.0) * 0.2;
+            const r = R * (1 + wave);
+            out[i*3]=Math.sin(phiArr[i])*Math.cos(thetaArr[i])*r;
+            out[i*3+1]=Math.sin(phiArr[i])*Math.sin(thetaArr[i])*r;
+            out[i*3+2]=Math.cos(phiArr[i])*r;
+        }
     }
-    init().catch(e=>{
-        document.getElementById('loading').innerHTML=`<div style="color:#ff6b6b;font-size:14px;padding:20px;text-align:center">❌ 摄像头启动失败<br><span style="font-size:11px;opacity:0.5">${e.message}</span></div>`;
-        setTimeout(()=>document.getElementById('loading').classList.add('hidden'),3000);
-    });
+}
 
-    let t=0;
-    function animate() {
-        requestAnimationFrame(animate);t+=0.016;
-        // 高摩擦，低灵敏度
-        vx*=0.99;vy*=0.99;
-        if(Math.abs(vx)<0.0001)vx=0;if(Math.abs(vy)<0.0001)vy=0;
-        sphere.rotation.x+=vx;sphere.rotation.y+=vy;
-        core.rotation.x+=vx*0.7;core.rotation.y+=vy*0.7;
-        halo.rotation.x+=vx*0.5;halo.rotation.y+=vy*0.5;
-        orbit1.rotation.y+=0.004;orbit1.rotation.z+=0.001;
-        orbit2.rotation.y-=0.005;orbit2.rotation.z+=0.002;
-        // 颜色缓慢过渡（更自然）
-        const c=geo.attributes.color.array;
-        for(let i=0;i<N*3;i++)c[i]+=(tcol[i]-c[i])*0.03;
-        geo.attributes.color.needsUpdate=true;
-        // 内核脉动
-        const pulse = 1 + Math.sin(t*2.0)*0.015;
-        core.scale.setScalar(pulse);
-        // 星空微闪
-        starMat.opacity = 0.1 + Math.sin(t*0.5)*0.05;
-        if(!handActive&&lastLandmarks===null)ctx.clearRect(0,0,overlay.width,overlay.height);
-        renderer.render(scene,cam);
+const geo = new THREE.BufferGeometry();
+initColors(theme);
+computeTarget(0, 0, pos);
+for (let i = 0; i < N*3; i++) target[i] = pos[i];
+geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+const mat = new THREE.PointsMaterial({
+    size:0.035, vertexColors:true, transparent:true,
+    blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true, opacity:0.85,
+});
+const points = new THREE.Points(geo, mat);
+scene.add(points);
+
+const starGeo = new THREE.BufferGeometry();
+const starPos = new Float32Array(300*3);
+for(let i=0;i<300;i++){ starPos[i*3]=(Math.random()-0.5)*60; starPos[i*3+1]=(Math.random()-0.5)*60; starPos[i*3+2]=(Math.random()-0.5)*60-15; }
+starGeo.setAttribute('position',new THREE.BufferAttribute(starPos,3));
+const starMat = new THREE.PointsMaterial({ color:0xffffff, size:0.02, transparent:true, opacity:0.12, blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true });
+scene.add(new THREE.Points(starGeo, starMat));
+
+let currentMode = 0;
+const modeBtns = document.querySelectorAll('#toolbar .mode-btn');
+function setMode(m) {
+    currentMode = m;
+    modeBtns.forEach((btn,i) => btn.className = 'mode-btn' + (i===m?' active':''));
+}
+modeBtns.forEach(btn => btn.addEventListener('click', () => setMode(parseInt(btn.dataset.mode))));
+
+let vx=0,vy=0,mouseDown=false,handActive=false,lastLandmarks=null,prevHandX=0,prevHandY=0,prevMouseX=0,prevMouseY=0,handFrames=0,fistHoldTimer=0;
+
+let lastClickTime = 0;
+document.addEventListener('click', e => {
+    const now = Date.now();
+    if (now - lastClickTime < 300) { vx=0; vy=0; }
+    lastClickTime = now;
+});
+
+function switchTheme() {
+    tIdx=(tIdx+1)%themes.length;theme=themes[tIdx];
+    for(let i=0;i<N;i++){const c=getParticleColor(theme, phiArr[i]);tcol[i*3]=c.r;tcol[i*3+1]=c.g;tcol[i*3+2]=c.b;}
+}
+
+document.addEventListener('keydown', e => {
+    if (e.key === ' ') { e.preventDefault(); switchTheme(); }
+    if (e.key >= '1' && e.key <= '4') setMode(parseInt(e.key)-1);
+});
+
+document.addEventListener('mousedown', e => { if(e.button===0) mouseDown=true; });
+document.addEventListener('mouseup', e => { if(e.button===0) mouseDown=false; });
+document.addEventListener('mousemove', e => {
+    if(mouseDown){ handActive=false; lastLandmarks=null;
+        const dx=e.clientX-prevMouseX, dy=e.clientY-prevMouseY;
+        prevMouseX=e.clientX; prevMouseY=e.clientY;
+        vx+=dy*0.0008; vy+=dx*0.0008;
     }
-    animate();
-    </script>
+});
+document.addEventListener('mouseleave', () => { mouseDown=false; });
+
+function onResults(res) {
+    if (res.multiHandLandmarks?.[0]) {
+        handActive=true; lastLandmarks=res.multiHandLandmarks[0];
+        const lm = m(lastLandmarks), palm=lm[9]; handFrames++;
+        const tips=[4,8,12,16,20]; let cluster=0;
+        for(let i=0;i<tips.length;i++) for(let j=i+1;j<tips.length;j++) cluster+=Math.hypot(lm[tips[i]].x-lm[tips[j]].x, lm[tips[i]].y-lm[tips[j]].y);
+        const isPinched=cluster<0.6; let curled=0;
+        for(let i=1;i<5;i++){ const tip=lm[[8,12,16,20][i-1]], pip=lm[[6,10,14,18][i-1]]; if(tip.y>pip.y+0.02) curled++; }
+        if(Math.hypot(lm[4].x-lm[1].x, lm[4].y-lm[1].y)<0.04) curled++;
+        const isFist=curled>=4;
+        if(isFist&&!isPinched){ fistHoldTimer+=0.016; if(fistHoldTimer>0.6){ fistHoldTimer=0; switchTheme(); } } else fistHoldTimer=0;
+        if(isPinched){ vx*=0.95; vy*=0.95; if(Math.abs(vx)<0.001)vx=0; if(Math.abs(vy)<0.001)vy=0; }
+        if(handFrames<=2){ prevHandX=palm.x; prevHandY=palm.y; }
+        else if(!isPinched&&!isFist){ const dx=palm.x-prevHandX, dy=palm.y-prevHandY; prevHandX=palm.x; prevHandY=palm.y; vx+=dy*0.25; vy+=dx*0.25; }
+        else{ prevHandX=palm.x; prevHandY=palm.y; }
+    } else { handActive=false; lastLandmarks=null; handFrames=0; fistHoldTimer=0; }
+    processing=false; drawHandSkeleton(lastLandmarks);
+}
+
+async function init() {
+    const hands=new Hands({ locateFile:f=>"https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/"+f });
+    hands.setOptions({ maxNumHands:1, modelComplexity:0, minDetectionConfidence:0.7, minTrackingConfidence:0.6 });
+    hands.onResults(onResults);
+    const video=document.getElementById('webcam');
+    const stream=await navigator.mediaDevices.getUserMedia({ video:{facingMode:'user',width:{ideal:640},height:{ideal:480}}, audio:false });
+    video.srcObject=stream; await video.play();
+    function sendFrame(){ if(video.readyState>=2&&!processing){ processing=true; hands.send({image:video}); } requestAnimationFrame(sendFrame); }
+    sendFrame();
+    document.getElementById('loading').classList.add('hidden');
+}
+init().catch(e=>{ document.getElementById('loading').innerHTML="<div style="color:#ff6b6b;font-size:14px;padding:20px;text-align:center">❌ 摄像头启动失败<br><span style="font-size:11px;opacity:0.5">"+e.message+"</span></div>"; setTimeout(()=>document.getElementById('loading').classList.add('hidden'),3000); });
+
+let t=0;
+function animate() {
+    requestAnimationFrame(animate); t+=0.016;
+    vx*=0.99; vy*=0.99;
+    if(Math.abs(vx)<0.0001)vx=0; if(Math.abs(vy)<0.0001)vy=0;
+    computeTarget(currentMode, t, target);
+    const speed = currentMode===1||currentMode===2 ? 0.08 : 0.05;
+    const p=geo.attributes.position.array;
+    for(let i=0;i<N*3;i++) p[i] += (target[i] - p[i]) * speed;
+    geo.attributes.position.needsUpdate = true;
+    const c=geo.attributes.color.array;
+    for(let i=0;i<N*3;i++) c[i] += (tcol[i] - c[i]) * 0.03;
+    geo.attributes.color.needsUpdate = true;
+    points.rotation.x += vx; points.rotation.y += vy;
+    starMat.opacity = 0.1 + Math.sin(t*0.5)*0.05;
+    if(!handActive&&lastLandmarks===null)ctx.clearRect(0,0,overlay.width,overlay.height);
+    renderer.render(scene,cam);
+}
+animate();
+</script>
 </body>
 </html>
