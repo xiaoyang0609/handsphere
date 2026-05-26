@@ -266,6 +266,9 @@
         saveCanvas();
     }
 
+    // 帧发送节流锁（全局，onResults 释放，sendFrame 检查）
+    let processing = false;
+
     // ===== 手部追踪 =====
     function onResults(res) {
         if (res.multiHandLandmarks?.[0]) {
@@ -376,7 +379,6 @@
         await video.play();
 
         // 定时从 video 取帧发送给 MediaPipe
-        let processing = false;
         function sendFrame() {
             if (video.readyState >= 2 && !processing) {
                 processing = true;
