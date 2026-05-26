@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Orbit ? ????</title>
+    <title>Orbit — 手势控球</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { overflow: hidden; background: #08080e; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
@@ -46,18 +46,11 @@
     </style>
 </head>
 <body>
-    <a id="back-btn" href="index.html">? ??</a>
-    <div id="loading"><div class="spinner"></div><div>???...</div></div>
+    <a id="back-btn" href="index.html">← 返回</a>
+    <div id="loading"><div class="spinner"></div><div>载入中...</div></div>
     <div id="webcam-container"><video id="webcam" playsinline></video></div>
     <canvas id="hand-overlay"></canvas>
-    <!-- DEBUG OVERLAY -->
-    <div id="debug" style="position:fixed;top:60px;right:16px;z-index:99;background:rgba(0,0,0,0.75);color:#0f0;font:11px/1.6 monospace;padding:8px 12px;border-radius:6px;min-width:180px;border:1px solid rgba(255,255,255,0.05);pointer-events:none">
-      <div>?? ?: <span id="dbg-frames">0</span></div>
-      <div>?? ??: <span id="dbg-onsend" style="color:#888">??...</span></div>
-      <div>? ??: <span id="dbg-hand" style="color:#888">?</span></div>
-      <div>?? spread: <span id="dbg-spread">-</span></div>
-      <div>?? ??: <span id="dbg-fist">-</span></div>
-    </div>    <div id="hint">?? ???? ? ?? ???? ? ? ????</div>
+    <div id="hint">🖐 挥手旋转 · 🤏 捏合停止 · ✊ 握拳换色</div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
@@ -82,7 +75,7 @@
         overlay.width = window.innerWidth; overlay.height = window.innerHeight;
     });
 
-    // ===== ?????? =====
+    // ===== 手部骨骼绘制 =====
     const overlay = document.getElementById('hand-overlay');
     const ctx = overlay.getContext('2d');
     overlay.width = window.innerWidth; overlay.height = window.innerHeight;
@@ -126,19 +119,19 @@
             if (Math.hypot(landmarks[4].x-landmarks[1].x, landmarks[4].y-landmarks[1].y) < 0.04) curled++;
             ctx.font = '11px system-ui, sans-serif'; ctx.textAlign = 'center';
             if (cluster < 0.6) {
-                ctx.fillStyle = 'rgba(255,100,100,0.5)'; ctx.fillText('?? ?? = ??', x, y-30);
+                ctx.fillStyle = 'rgba(255,100,100,0.5)'; ctx.fillText('🤏 捏合 = 停止', x, y-30);
                 ctx.beginPath(); ctx.arc(x, y, 20, 0, Math.PI*2);
                 ctx.strokeStyle = 'rgba(255,100,100,0.15)'; ctx.lineWidth = 2; ctx.stroke();
             } else if (curled >= 4) {
-                const names = ['???','???','???','???','???','???','???'];
-                ctx.fillStyle = 'rgba(255,200,50,0.5)'; ctx.fillText(`? ???? ? ${names[tIdx]}`, x, y-30);
+                const names = ['🔴红','🟠橙','🟡黄','🟢绿','🔵蓝','🟣靛','🟣紫'];
+                ctx.fillStyle = 'rgba(255,200,50,0.5)'; ctx.fillText(`✊ 握拳换色 → ${names[tIdx]}`, x, y-30);
             } else {
-                ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillText('? ???', x, y-30);
+                ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillText('✋ 控制中', x, y-30);
             }
         }
     }
 
-    // ===== ?? =====
+    // ===== 球体 =====
     const N = 2000, R = 1.5;
     const geo = new THREE.BufferGeometry();
     const pos = new Float32Array(N*3), col = new Float32Array(N*3), tcol = new Float32Array(N*3);
@@ -168,7 +161,7 @@
     starGeo.setAttribute('position',new THREE.BufferAttribute(starPos,3));
     scene.add(new THREE.Points(starGeo,new THREE.PointsMaterial({color:0xffffff,size:0.015,transparent:true,opacity:0.2})));
 
-    // ===== ?? =====
+    // ===== 控制 =====
     let vx=0,vy=0,mouseDown=false,handActive=false,lastLandmarks=null,prevHandX=0,prevHandY=0,prevMouseX=0,prevMouseY=0,handFrames=0,fistHoldTimer=0;
 
     function switchTheme() {
@@ -206,11 +199,8 @@
             if(handFrames<=2){prevHandX=palm.x;prevHandY=palm.y;}
             else if(!isPinched&&!isFist){const dx=palm.x-prevHandX,dy=palm.y-prevHandY;prevHandX=palm.x;prevHandY=palm.y;vx+=dy*0.6;vy+=dx*0.6;}
             else{prevHandX=palm.x;prevHandY=palm.y;}
-        } else {handActive=false;lastLandmarks=null;handFrames=0;fistHoldTimer=0;
-            document.getElementById('dbg-hand').textContent = '? ???';
-            document.getElementById('dbg-hand').style.color = '#ff6b6b';
-        }
-        drawHandSkeleton(lastLandmarks);
+        } else {handActive=false;lastLandmarks=null;handFrames=0;fistHoldTimer=0;}
+        processing=false;drawHandSkeleton(lastLandmarks);
     }
 
     async function init() {
@@ -226,7 +216,7 @@
         video.srcObject=stream;
         await video.play();
 
-        function sendFrame(){
+        let processing=false;function sendFrame(){
             if(video.readyState>=2)hands.send({image:video});
             requestAnimationFrame(sendFrame);
         }
@@ -235,7 +225,7 @@
         document.getElementById('loading').classList.add('hidden');
     }
     init().catch(e=>{
-        document.getElementById('loading').innerHTML=`<div style="color:#ff6b6b;font-size:14px;padding:20px;text-align:center">? ???????<br><span style="font-size:11px;opacity:0.5">${e.message}</span></div>`;
+        document.getElementById('loading').innerHTML=`<div style="color:#ff6b6b;font-size:14px;padding:20px;text-align:center">❌ 摄像头启动失败<br><span style="font-size:11px;opacity:0.5">${e.message}</span></div>`;
         setTimeout(()=>document.getElementById('loading').classList.add('hidden'),3000);
     });
 
@@ -257,4 +247,3 @@
     </script>
 </body>
 </html>
-
