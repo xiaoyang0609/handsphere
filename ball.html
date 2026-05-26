@@ -65,7 +65,7 @@
     cam.position.z = 4.5;
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
     renderer.domElement.id = 'three-canvas';
     document.body.prepend(renderer.domElement);
     window.addEventListener('resize', () => {
@@ -132,43 +132,125 @@
         }
     }
 
-    // ===== 球体 =====
-    const N = 2000, R = 1.5;
+    // ===== 球体（流光星云版） =====
+    const N = 4000, R = 1.5;
     const geo = new THREE.BufferGeometry();
     const pos = new Float32Array(N*3), col = new Float32Array(N*3), tcol = new Float32Array(N*3);
     const themes = [[0xff1744],[0xff6d00],[0xffea00],[0x00e676],[0x2979ff],[0x3d5afe],[0x9c27b0]];
     let tIdx = 0, theme = themes[0];
-    function randColor(t) { const c=new THREE.Color(t[Math.floor(Math.random()*t.length)]); c.lerp(new THREE.Color(1,1,1),0.4); return c; }
+
+    function getParticleColor(t, phi) {
+        const c = new THREE.Color(t[0]);
+        const mix = Math.abs(Math.cos(phi)) * 0.5 + 0.2;
+        c.lerp(new THREE.Color(1,1,0.8), mix);
+        return c;
+    }
     for (let i = 0; i < N; i++) {
         const phi = Math.acos(1-2*(i+0.5)/N), theta = Math.PI*(1+Math.sqrt(5))*i;
-        pos[i*3]=Math.sin(phi)*Math.cos(theta)*R; pos[i*3+1]=Math.sin(phi)*Math.sin(theta)*R; pos[i*3+2]=Math.cos(phi)*R;
-        const c = randColor(theme); col[i*3]=tcol[i*3]=c.r; col[i*3+1]=tcol[i*3+1]=c.g; col[i*3+2]=tcol[i*3+2]=c.b;
+        const rOff = R * (0.96 + Math.random()*0.08);
+        pos[i*3]=Math.sin(phi)*Math.cos(theta)*rOff;
+        pos[i*3+1]=Math.sin(phi)*Math.sin(theta)*rOff;
+        pos[i*3+2]=Math.cos(phi)*rOff;
+        const c = getParticleColor(theme, phi);
+        col[i*3]=tcol[i*3]=c.r; col[i*3+1]=tcol[i*3+1]=c.g; col[i*3+2]=tcol[i*3+2]=c.b;
     }
     geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
     geo.setAttribute('color', new THREE.BufferAttribute(col,3));
     const sphere = new THREE.Points(geo, new THREE.PointsMaterial({
-        size:0.035, vertexColors:true, transparent:true, blending:THREE.AdditiveBlending,
-        depthWrite:false, sizeAttenuation:true, opacity:0.8,
+        size:0.032, vertexColors:true, transparent:true,
+        blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true, opacity:0.85,
     }));
     scene.add(sphere);
-    const inner = new THREE.Mesh(new THREE.SphereGeometry(R*0.85,20,20), new THREE.MeshBasicMaterial({color:0x4a9eff,transparent:true,opacity:0.04,wireframe:true}));
-    scene.add(inner);
-    const outer = new THREE.Mesh(new THREE.SphereGeometry(R*1.1,20,20), new THREE.MeshBasicMaterial({color:0x4a9eff,transparent:true,opacity:0.02,wireframe:true}));
-    scene.add(outer);
-    function makeBelt(r,c,t){const g=new THREE.BufferGeometry();const p=new Float32Array(80*3);for(let i=0;i<80;i++){const a=i/80*Math.PI*2;p[i*3]=Math.cos(a)*r;p[i*3+1]=Math.sin(a)*r*0.15;p[i*3+2]=0;}g.setAttribute('position',new THREE.BufferAttribute(p,3));const l=new THREE.Line(g,new THREE.LineBasicMaterial({color:c,transparent:true,opacity:0.08}));l.rotation.x=t;return l;}
-    const belt1=makeBelt(1.8,0x4a9eff,0.3),belt2=makeBelt(2.0,0x6c5ce7,-0.5);
-    scene.add(belt1);scene.add(belt2);
-    const starGeo=new THREE.BufferGeometry();const starPos=new Float32Array(300*3);for(let i=0;i<300*3;i++)starPos[i]=(Math.random()-0.5)*30;
+
+    // 发光内核
+    const Ncore = 600;
+    const cGeo = new THREE.BufferGeometry();
+    const cPos = new Float32Array(Ncore*3), cCol = new Float32Array(Ncore*3);
+    for (let i = 0; i < Ncore; i++) {
+        const theta = Math.random()*Math.PI*2, phi = Math.acos(2*Math.random()-1);
+        const r = R * 0.55 * Math.cbrt(Math.random());
+        cPos[i*3]=Math.sin(phi)*Math.cos(theta)*r;
+        cPos[i*3+1]=Math.sin(phi)*Math.sin(theta)*r;
+        cPos[i*3+2]=Math.cos(phi)*r;
+        const c = new THREE.Color(theme[0]); c.lerp(new THREE.Color(1,1,1), 0.7); c.multiplyScalar(0.6+Math.random()*0.4);
+        cCol[i*3]=c.r; cCol[i*3+1]=c.g; cCol[i*3+2]=c.b;
+    }
+    cGeo.setAttribute('position', new THREE.BufferAttribute(cPos,3));
+    cGeo.setAttribute('color', new THREE.BufferAttribute(cCol,3));
+    const core = new THREE.Points(cGeo, new THREE.PointsMaterial({
+        size:0.055, vertexColors:true, transparent:true,
+        blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true, opacity:0.25,
+    }));
+    scene.add(core);
+
+    // 外晕
+    const Nhalo = 250;
+    const hGeo = new THREE.BufferGeometry();
+    const hPos = new Float32Array(Nhalo*3), hCol = new Float32Array(Nhalo*3);
+    for (let i = 0; i < Nhalo; i++) {
+        const theta = Math.random()*Math.PI*2, phi = Math.acos(2*Math.random()-1);
+        const r = R * (1.15 + Math.random()*0.6);
+        hPos[i*3]=Math.sin(phi)*Math.cos(theta)*r;
+        hPos[i*3+1]=Math.sin(phi)*Math.sin(theta)*r;
+        hPos[i*3+2]=Math.cos(phi)*r;
+        const c = new THREE.Color(theme[0]); c.lerp(new THREE.Color(1,1,1), 0.5);
+        hCol[i*3]=c.r*0.3; hCol[i*3+1]=c.g*0.3; hCol[i*3+2]=c.b*0.3;
+    }
+    hGeo.setAttribute('position', new THREE.BufferAttribute(hPos,3));
+    hGeo.setAttribute('color', new THREE.BufferAttribute(hCol,3));
+    const halo = new THREE.Points(hGeo, new THREE.PointsMaterial({
+        size:0.05, vertexColors:true, transparent:true, opacity:0.12,
+        blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true,
+    }));
+    scene.add(halo);
+
+    // 轨道粒子环
+    function makeOrbit(r, color, tilt) {
+        const n = 150;
+        const g = new THREE.BufferGeometry();
+        const p = new Float32Array(n*3);
+        for (let i = 0; i < n; i++) {
+            const a = i/n*Math.PI*2 + Math.random()*0.05;
+            p[i*3]=Math.cos(a)*r; p[i*3+1]=(Math.random()-0.5)*0.15; p[i*3+2]=Math.sin(a)*r;
+        }
+        g.setAttribute('position', new THREE.BufferAttribute(p,3));
+        const pts = new THREE.Points(g, new THREE.PointsMaterial({
+            color, size:0.025, transparent:true, opacity:0.15,
+            blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true,
+        }));
+        pts.rotation.x = tilt;
+        return pts;
+    }
+    const orbit1 = makeOrbit(2.0, 0x4a9eff, 0.3);
+    const orbit2 = makeOrbit(2.3, 0x6c5ce7, -0.5);
+    scene.add(orbit1); scene.add(orbit2);
+
+    // 闪烁星空
+    const starGeo = new THREE.BufferGeometry();
+    const starPos = new Float32Array(400*3);
+    for(let i=0;i<400;i++){
+        starPos[i*3]=(Math.random()-0.5)*60;
+        starPos[i*3+1]=(Math.random()-0.5)*60;
+        starPos[i*3+2]=(Math.random()-0.5)*60 - 15;
+    }
     starGeo.setAttribute('position',new THREE.BufferAttribute(starPos,3));
-    scene.add(new THREE.Points(starGeo,new THREE.PointsMaterial({color:0xffffff,size:0.015,transparent:true,opacity:0.2})));
+    const starMat = new THREE.PointsMaterial({
+        color:0xffffff, size:0.02, transparent:true, opacity:0.15,
+        blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true,
+    });
+    const starField = new THREE.Points(starGeo, starMat);
+    scene.add(starField);
 
     // ===== 控制 =====
     let vx=0,vy=0,mouseDown=false,handActive=false,lastLandmarks=null,prevHandX=0,prevHandY=0,prevMouseX=0,prevMouseY=0,handFrames=0,fistHoldTimer=0;
 
     function switchTheme() {
         tIdx=(tIdx+1)%themes.length;theme=themes[tIdx];
-        for(let i=0;i<N;i++){const c=randColor(theme);tcol[i*3]=c.r;tcol[i*3+1]=c.g;tcol[i*3+2]=c.b;}
-        const hex=theme[0];inner.material.color.setHex(hex);outer.material.color.setHex(hex);belt1.material.color.setHex(hex);
+        for(let i=0;i<N;i++){const c=getParticleColor(theme, Math.acos(1-2*(i+0.5)/N));tcol[i*3]=c.r;tcol[i*3+1]=c.g;tcol[i*3+2]=c.b;}
+        for(let i=0;i<Ncore;i++){const c=new THREE.Color(theme[0]);c.lerp(new THREE.Color(1,1,1),0.7);c.multiplyScalar(0.6+Math.random()*0.4);cCol[i*3]=c.r;cCol[i*3+1]=c.g;cCol[i*3+2]=c.b;}
+        cGeo.attributes.color.needsUpdate=true;
+        for(let i=0;i<Nhalo;i++){const c=new THREE.Color(theme[0]);c.lerp(new THREE.Color(1,1,1),0.5);hCol[i*3]=c.r*0.3;hCol[i*3+1]=c.g*0.3;hCol[i*3+2]=c.b*0.3;}
+        hGeo.attributes.color.needsUpdate=true;
     }
     document.addEventListener('mousedown',e=>{if(e.button===0)mouseDown=true;});
     document.addEventListener('mouseup',e=>{if(e.button===0)mouseDown=false;});
@@ -176,7 +258,7 @@
         if(mouseDown){handActive=false;lastLandmarks=null;
             const dx=e.clientX-prevMouseX,dy=e.clientY-prevMouseY;
             prevMouseX=e.clientX;prevMouseY=e.clientY;
-            vx+=dy*0.002;vy+=dx*0.002;
+            vx+=dy*0.0008;vy+=dx*0.0008;
         }
     });
     document.addEventListener('mouseleave',()=>{mouseDown=false;});
@@ -196,9 +278,9 @@
             const isFist=curled>=4;
             if(isFist&&!isPinched){fistHoldTimer+=0.016;if(fistHoldTimer>0.6){fistHoldTimer=0;switchTheme();}}
             else fistHoldTimer=0;
-            if(isPinched){vx*=0.9;vy*=0.9;if(Math.abs(vx)<0.001)vx=0;if(Math.abs(vy)<0.001)vy=0;}
+            if(isPinched){vx*=0.95;vy*=0.95;if(Math.abs(vx)<0.001)vx=0;if(Math.abs(vy)<0.001)vy=0;}
             if(handFrames<=2){prevHandX=palm.x;prevHandY=palm.y;}
-            else if(!isPinched&&!isFist){const dx=palm.x-prevHandX,dy=palm.y-prevHandY;prevHandX=palm.x;prevHandY=palm.y;vx+=dy*0.6;vy+=dx*0.6;}
+            else if(!isPinched&&!isFist){const dx=palm.x-prevHandX,dy=palm.y-prevHandY;prevHandX=palm.x;prevHandY=palm.y;vx+=dy*0.25;vy+=dx*0.25;}
             else{prevHandX=palm.x;prevHandY=palm.y;}
         } else {handActive=false;lastLandmarks=null;handFrames=0;fistHoldTimer=0;}
         processing=false;drawHandSkeleton(lastLandmarks);
@@ -233,14 +315,23 @@
     let t=0;
     function animate() {
         requestAnimationFrame(animate);t+=0.016;
-        vx*=0.995;vy*=0.995;
+        // 高摩擦，低灵敏度
+        vx*=0.99;vy*=0.99;
         if(Math.abs(vx)<0.0001)vx=0;if(Math.abs(vy)<0.0001)vy=0;
         sphere.rotation.x+=vx;sphere.rotation.y+=vy;
-        inner.rotation.x+=vx*0.8;inner.rotation.y+=vy*0.8;
-        outer.rotation.x+=vx*1.2;outer.rotation.y+=vy*1.2;
-        belt1.rotation.y+=0.003;belt1.rotation.z+=0.001;belt2.rotation.y-=0.004;belt2.rotation.z+=0.002;
-        const c=geo.attributes.color.array;for(let i=0;i<N*3;i++)c[i]+=(tcol[i]-c[i])*0.04;geo.attributes.color.needsUpdate=true;
-        inner.scale.setScalar(1+Math.sin(t*1.5)*0.008);
+        core.rotation.x+=vx*0.7;core.rotation.y+=vy*0.7;
+        halo.rotation.x+=vx*0.5;halo.rotation.y+=vy*0.5;
+        orbit1.rotation.y+=0.004;orbit1.rotation.z+=0.001;
+        orbit2.rotation.y-=0.005;orbit2.rotation.z+=0.002;
+        // 颜色缓慢过渡（更自然）
+        const c=geo.attributes.color.array;
+        for(let i=0;i<N*3;i++)c[i]+=(tcol[i]-c[i])*0.03;
+        geo.attributes.color.needsUpdate=true;
+        // 内核脉动
+        const pulse = 1 + Math.sin(t*2.0)*0.015;
+        core.scale.setScalar(pulse);
+        // 星空微闪
+        starMat.opacity = 0.1 + Math.sin(t*0.5)*0.05;
         if(!handActive&&lastLandmarks===null)ctx.clearRect(0,0,overlay.width,overlay.height);
         renderer.render(scene,cam);
     }
