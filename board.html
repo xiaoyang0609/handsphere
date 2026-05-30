@@ -1,399 +1,699 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>手势黑板</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { overflow: hidden; background: #1a1a2e; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>手势黑板</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; background: #1a1a2e; font-family: 'Inter', system-ui, -apple-system, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
+#draw-canvas { position: fixed; inset: 0; z-index: 1; cursor: none; }
+#hand-overlay { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+#webcam-container { position: fixed; left: 0; top: 0; width: 640px; height: 480px; opacity: 0; pointer-events: none; overflow: hidden; z-index: 0; transform: scale(0.01); transform-origin: top left; }
+#webcam-container video { width: 640px; height: 480px; object-fit: cover; }
+#loading { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 30%, #0f3460 60%, #1a1a2e 100%); background-size: 400% 400%; animation: gradientShift 4s ease infinite; transition: opacity 0.8s ease, transform 0.8s ease; }
+#loading.hidden { opacity: 0; transform: scale(1.05); pointer-events: none; }
+@keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+.loading-ring { width: 48px; height: 48px; border-radius: 50%; border: 2px solid rgba(74, 158, 255, 0.08); border-top-color: #4a9eff; border-right-color: #00e676; animation: spin 1s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite; margin-bottom: 20px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#loading .text { color: rgba(255,255,255,0.4); font-size: 13px; letter-spacing: 2px; font-weight: 300; }
+#loading .subtext { color: rgba(255,255,255,0.15); font-size: 11px; letter-spacing: 1px; margin-top: 8px; }
+#loading .progress-text { color: rgba(74,158,255,0.4); font-size: 10px; letter-spacing: 1px; margin-top: 12px; font-weight: 300; }
+#loading .progress-bar-wrap { width: 160px; height: 2px; background: rgba(255,255,255,0.04); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+#loading .progress-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #4a9eff, #00e676); border-radius: 2px; transition: width 0.3s; }
+#back-btn { position: fixed; top: 16px; left: 16px; z-index: 20; color: rgba(255,255,255,0.2); font-size: 11px; text-decoration: none; padding: 5px 12px; border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; transition: all 0.3s; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); background: rgba(0,0,0,0.2); }
+#back-btn:hover { border-color: rgba(255,255,255,0.12); color: rgba(255,255,255,0.4); }
 
-        #draw-canvas {
-            position: fixed; inset: 0; z-index: 1;
-            cursor: none;
-        }
-        #hand-overlay {
-            position: fixed; inset: 0; z-index: 2;
-            pointer-events: none;
-        }
-        #webcam-container {
-            position: fixed; bottom: 16px; right: 16px;
-            width: 140px; height: 105px;
-            border-radius: 10px; overflow: hidden;
-            border: 1px solid rgba(255,255,255,0.1);
-            z-index: 3; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        }
-        #webcam-container video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+/* 左侧毛玻璃工具栏 */
+#toolbar { position: fixed; left: 16px; top: 50%; transform: translateY(-50%); z-index: 10; display: flex; flex-direction: column; gap: 4px; background: rgba(10, 10, 25, 0.55); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 8px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.06); box-shadow: 0 8px 40px rgba(0,0,0,0.4); align-items: center; min-width: 44px; }
+#toolbar .tool-section { display: flex; flex-direction: column; gap: 2px; align-items: center; width: 100%; }
+#toolbar .tool-sep { width: 70%; height: 1px; background: rgba(255,255,255,0.04); margin: 3px 0; }
+#toolbar .tool-btn { padding: 5px 8px; border-radius: 8px; font-size: 14px; transition: all 0.25s; cursor: pointer; border: none; background: transparent; color: rgba(255,255,255,0.3); line-height: 1; position: relative; width: 36px; height: 32px; display: flex; align-items: center; justify-content: center; }
+#toolbar .tool-btn:hover { color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.05); }
+#toolbar .tool-btn.active { color: #fff; background: rgba(74, 158, 255, 0.12); box-shadow: inset 0 0 0 1px rgba(74, 158, 255, 0.15); }
+#toolbar .tool-btn .tip { position: absolute; left: calc(100% + 8px); top: 50%; transform: translateY(-50%); background: rgba(0,0,0,0.8); backdrop-filter: blur(8px); color: rgba(255,255,255,0.7); font-size: 10px; padding: 4px 8px; border-radius: 6px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.2s; font-family: system-ui, sans-serif; }
+#toolbar .tool-btn:hover .tip { opacity: 1; }
+#color-palette { display: grid; grid-template-columns: repeat(2, 1fr); gap: 3px; padding: 2px 0; }
+#color-palette .color-swatch { width: 18px; height: 18px; border-radius: 50%; cursor: pointer; border: 1.5px solid transparent; transition: all 0.2s; }
+#color-palette .color-swatch:hover { transform: scale(1.15); }
+#color-palette .color-swatch.active { border-color: #fff; box-shadow: 0 0 8px rgba(255,255,255,0.2); }
+#status-info { position: fixed; bottom: 16px; left: 70px; z-index: 10; color: rgba(255,255,255,0.15); font-size: 10px; pointer-events: none; line-height: 1.6; font-weight: 300; }
+#status-info .mode-indicator { color: rgba(74,158,255,0.4); }
+#status-info .color-indicator { display: inline-block; width: 8px; height: 8px; border-radius: 2px; vertical-align: middle; margin-right: 3px; }
+#hint { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.05); font-size: 10px; z-index: 3; pointer-events: none; text-align: center; }
+#clear-overlay { position: fixed; inset: 0; z-index: 15; pointer-events: none; display: none; align-items: center; justify-content: center; }
+#clear-overlay.active { display: flex; }
+#clear-ring { width: 80px; height: 80px; border-radius: 50%; border: 3px solid rgba(255,200,50,0.15); border-top-color: rgba(255,200,50,0.8); animation: clearSpin 3s linear forwards; position: relative; }
+#clear-ring.warning { border-top-color: rgba(255,50,50,0.8); }
+@keyframes clearSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+#clear-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: rgba(255,200,50,0.4); font-size: 10px; white-space: nowrap; }
+#size-indicator { color: rgba(255,255,255,0.2); font-size: 9px; text-align: center; padding: 2px 0; }
 
-        #toolbar {
-            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-            z-index: 5; display: flex; gap: 8px; align-items: center;
-            background: rgba(0,0,0,0.5); backdrop-filter: blur(12px);
-            padding: 8px 16px; border-radius: 30px;
-            border: 1px solid rgba(255,255,255,0.06);
-        }
-        #toolbar .mode {
-            padding: 6px 14px; border-radius: 20px;
-            font-size: 12px; letter-spacing: 1px;
-            transition: all 0.3s;
-        }
-        #toolbar .mode.active {
-            background: rgba(255,255,255,0.1);
-            color: #fff;
-        }
-        #toolbar .mode.inactive {
-            color: rgba(255,255,255,0.2);
-        }
-        #toolbar .sep { width: 1px; height: 20px; background: rgba(255,255,255,0.06); }
-        #toolbar .action {
-            padding: 6px 14px; border-radius: 20px;
-            font-size: 12px; cursor: pointer; border: none;
-            background: transparent; color: rgba(255,255,255,0.3);
-            transition: all 0.3s;
-        }
-        #toolbar .action:hover { color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.05); }
+/* 彩虹模式标签 */
+#rainbow-badge { display: none; background: linear-gradient(90deg, #ff1744, #ff6d00, #ffea00, #00e676, #2979ff, #9c27b0); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: bold; }
 
-        #status {
-            position: fixed; bottom: 130px; right: 20px;
-            color: rgba(255,255,255,0.15); font-size: 10px; z-index: 3;
-            text-align: right; pointer-events: none; line-height: 1.5;
-        }
+/* 吸色光标 */
+#color-picker-cursor { position: fixed; z-index: 11; pointer-events: none; width: 24px; height: 24px; border-radius: 50%; border: 2px solid white; display: none; transform: translate(-50%, -50%); }
 
-        #loading {
-            position: fixed; inset: 0; z-index: 100;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            background: #1a1a2e; color: #fff; transition: opacity 0.8s;
-        }
-        #loading.hidden { opacity: 0; pointer-events: none; }
-        #loading .spinner {
-            width: 28px; height: 28px;
-            border: 2px solid rgba(255,255,255,0.06); border-top-color: #4a9eff;
-            border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 14px;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
+/* 粒子消散清空 Canvas */
+#particle-clear-canvas { position: fixed; inset: 0; z-index: 14; pointer-events: none; }
 
-        #back-btn {
-            position: fixed; top: 20px; left: 20px; z-index: 5;
-            color: rgba(255,255,255,0.2); font-size: 12px;
-            text-decoration: none; padding: 6px 14px;
-            border: 1px solid rgba(255,255,255,0.06); border-radius: 20px;
-            transition: all 0.3s;
-        }
-        #back-btn:hover { border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.4); }
+/* 回放面板 */
+#replay-panel { position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%); z-index: 10; display: none; gap: 8px; background: rgba(10, 10, 25, 0.6); backdrop-filter: blur(12px); padding: 6px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06); }
+#replay-panel.active { display: flex; align-items: center; }
+#replay-panel .rp-btn { background: none; border: none; color: rgba(255,255,255,0.4); cursor: pointer; font-size: 14px; padding: 2px 6px; border-radius: 4px; }
+#replay-panel .rp-btn:hover { color: #fff; background: rgba(255,255,255,0.05); }
+#replay-panel .rp-label { color: rgba(255,255,255,0.2); font-size: 9px; letter-spacing: 0.5px; }
 
-        #hint {
-            position: fixed; bottom: 30px; left: 50%;
-            transform: translateX(-50%);
-            color: rgba(255,255,255,0.06); font-size: 11px; z-index: 3;
-            pointer-events: none;
-        }
-    </style>
+@media (max-width: 600px) {
+  #toolbar { left: 8px; padding: 6px; border-radius: 10px; min-width: 36px; }
+  #toolbar .tool-btn { width: 30px; height: 28px; font-size: 12px; padding: 4px 6px; }
+  #color-palette .color-swatch { width: 14px; height: 14px; }
+  #status-info { left: 56px; font-size: 9px; }
+  #back-btn { top: 12px; left: 12px; font-size: 10px; padding: 4px 10px; }
+  #hint { display: none; }
+  #replay-panel { bottom: 50px; }
+}
+@media (orientation: landscape) and (max-height: 500px) { #toolbar { top: 50%; } #status-info { bottom: 8px; left: 56px; } }
+</style>
 </head>
 <body>
-    <a id="back-btn" href="index.html">← 返回</a>
-    <div id="loading"><div class="spinner"></div><div>载入中...</div></div>
-    <div id="webcam-container"><video id="webcam" playsinline></video></div>
+<a id="back-btn" href="index.html">← 返回</a>
+<div id="loading">
+  <div class="loading-ring"></div>
+  <div class="text">载入中</div>
+  <div class="subtext">正在启动手势黑板系统</div>
+  <div class="progress-text" id="progress-text">加载模型...</div>
+  <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+</div>
+<div id="webcam-container"><video id="webcam" playsinline></video></div>
+<canvas id="draw-canvas"></canvas>
+<canvas id="hand-overlay"></canvas>
+<canvas id="particle-clear-canvas"></canvas>
+<div id="color-picker-cursor"></div>
+<div id="clear-overlay"><div id="clear-ring"><span id="clear-text">清空中</span></div></div>
+<div id="replay-panel">
+  <span class="rp-label">🎬 回放</span>
+  <button class="rp-btn" id="rp-play">▶</button>
+  <button class="rp-btn" id="rp-pause">⏸</button>
+  <button class="rp-btn" id="rp-stop">⏹</button>
+  <span class="rp-label" id="rp-status">就绪</span>
+</div>
+<div id="toolbar">
+  <div class="tool-section">
+    <button class="tool-btn active" id="btn-pen" title="画笔"><span>✏️</span><span class="tip">画笔模式</span></button>
+    <button class="tool-btn" id="btn-eraser" title="橡皮"><span>🧹</span><span class="tip">橡皮模式</span></button>
+    <button class="tool-btn" id="btn-undo" title="撤销"><span>↩</span><span class="tip">撤销 (Ctrl+Z)</span></button>
+    <button class="tool-btn" id="btn-redo" title="重做"><span>↪</span><span class="tip">重做 (Ctrl+Y)</span></button>
+  </div>
+  <div class="tool-sep"></div>
+  <div class="tool-section"><div id="color-palette"></div></div>
+  <div class="tool-sep"></div>
+  <div class="tool-section">
+    <button class="tool-btn" id="btn-size-down" title="减小"><span>−</span><span class="tip">减小笔刷</span></button>
+    <div id="size-indicator">6</div>
+    <button class="tool-btn" id="btn-size-up" title="增大"><span>+</span><span class="tip">增大笔刷</span></button>
+  </div>
+  <div class="tool-sep"></div>
+  <div class="tool-section">
+    <button class="tool-btn" id="btn-eraser-sm" title="小橡皮"><span>•</span><span class="tip">小橡皮</span></button>
+    <button class="tool-btn" id="btn-eraser-md" title="中橡皮" style="font-size:16px"><span>◉</span><span class="tip">中橡皮</span></button>
+    <button class="tool-btn" id="btn-eraser-lg" title="大橡皮" style="font-size:18px"><span>◎</span><span class="tip">大橡皮</span></button>
+  </div>
+  <div class="tool-sep"></div>
+  <div class="tool-section">
+    <button class="tool-btn" id="btn-rainbow" title="彩虹笔"><span>🌈</span><span class="tip">🌈 彩虹流动笔</span></button>
+    <button class="tool-btn" id="btn-pick-color" title="吸色"><span>💉</span><span class="tip">💉 吸色</span></button>
+    <button class="tool-btn" id="btn-replay" title="回放"><span>🎬</span><span class="tip">🎬 回放</span></button>
+  </div>
+  <div class="tool-sep"></div>
+  <div class="tool-section">
+    <button class="tool-btn" id="btn-save" title="保存"><span>💾</span><span class="tip">保存为 PNG</span></button>
+    <button class="tool-btn" id="btn-clear" title="清空"><span>🗑</span><span class="tip">清空画布</span></button>
+  </div>
+</div>
+<div id="status-info">
+  <span id="status-mode" class="mode-indicator">✏️ 画笔</span><br>
+  <span id="status-color-info"><span class="color-indicator" id="color-dot" style="background:#ffffff"></span> #ffffff</span>
+</div>
+<div id="hint">🤏 两指捏合=写字 · ✊ 五指捏合=擦除 · 🖐 摊开3秒=清空 · 🌈 彩虹笔 · ✊🤏 握拳松紧调大小</div>
 
-    <canvas id="draw-canvas"></canvas>
-    <canvas id="hand-overlay"></canvas>
+<script src="https://unpkg.com/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.js" crossorigin="anonymous"></script>
 
-    <div id="toolbar">
-        <span class="mode active" id="mode-pen">✏️ 两指写字</span>
-        <span class="mode inactive" id="mode-eraser">🤏 五指擦除</span>
-        <span class="sep"></span>
-        <button class="action" onclick="clearAll()">🗑 清空</button>
-        <button class="action" onclick="cycleColor()">🎨 换色</button>
-    </div>
-    <div id="status">模式: <span id="status-text">等待</span></div>
-    <div id="hint">🤏 两指捏合 = 写字 · 🖐 五指捏合 = 擦除 · 🖐 摊开3秒 = 清空</div>
+<script>
+// ============================================================
+// Canvas 双缓冲
+// ============================================================
+const dc = document.getElementById('draw-canvas'), dCtx = dc.getContext('2d');
+const off = document.createElement('canvas'), offCtx = off.getContext('2d');
+const ov = document.getElementById('hand-overlay'), oCtx = ov.getContext('2d');
+const pcCanvas = document.getElementById('particle-clear-canvas'), pcCtx = pcCanvas.getContext('2d');
+const GS = 20;
 
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
+function drawBg(ctx, w, h) {
+  ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle='rgba(255,255,255,0.03)';ctx.lineWidth=0.5;
+  for(let x=0;x<=w;x+=GS){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}
+  for(let y=0;y<=h;y+=GS){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+  ctx.strokeStyle='rgba(255,255,255,0.05)';ctx.lineWidth=1;
+  for(let x=0;x<=w;x+=GS*5){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}
+  for(let y=0;y<=h;y+=GS*5){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+  ctx.strokeStyle='rgba(255,255,255,0.04)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(w/2,0);ctx.lineTo(w/2,h);ctx.moveTo(0,h/2);ctx.lineTo(w,h/2);ctx.stroke();
+}
 
-    <script>
-    // ===== Canvas 设置 =====
-    const drawCanvas = document.getElementById('draw-canvas');
-    const dCtx = drawCanvas.getContext('2d');
-    const overlay = document.getElementById('hand-overlay');
-    const oCtx = overlay.getContext('2d');
+function resize() {
+  const w=innerWidth,h=innerHeight;
+  let img=null;
+  if(dc.width>0&&offCtx.width>0)img=offCtx.getImageData(0,0,off.width,off.height);
+  dc.width=w;dc.height=h;off.width=w;off.height=h;ov.width=w;ov.height=h;pcCanvas.width=w;pcCanvas.height=h;
+  drawBg(offCtx,w,h);
+  if(img)offCtx.putImageData(img,0,0);
+  dCtx.drawImage(off,0,0);
+}
+resize();addEventListener('resize',resize);
 
-    function resizeCanvas() {
-        drawCanvas.width = window.innerWidth;
-        drawCanvas.height = window.innerHeight;
-        overlay.width = window.innerWidth;
-        overlay.height = window.innerHeight;
-        // 恢复绘制内容
-        if (savedImageData) {
-            dCtx.putImageData(savedImageData, 0, 0);
-        }
+// ============================================================
+// 颜色
+// ============================================================
+const PCS=[{h:'#ffffff',n:'白'},{h:'#ff1744',n:'红'},{h:'#ff6d00',n:'橙'},{h:'#ffea00',n:'黄'},{h:'#00e676',n:'绿'},{h:'#18ffff',n:'青'},{h:'#2979ff',n:'蓝'},{h:'#9c27b0',n:'紫'},{h:'#ff80ab',n:'粉'},{h:'#bdbdbd',n:'灰'}];
+let ci=0,pc=PCS[0].h;
+
+function initPalette(){
+  const c=document.getElementById('color-palette');c.innerHTML='';
+  PCS.forEach((p,i)=>{
+    const s=document.createElement('div');
+    s.className='color-swatch'+(i===ci?' active':'');s.style.background=p.h;s.dataset.idx=i;s.title=p.n;
+    s.addEventListener('click',()=>selC(i));
+    c.appendChild(s);
+  });
+}
+function selC(i){ci=i;pc=PCS[i].h;
+  rainbowMode=false;
+  document.getElementById('btn-rainbow').className='tool-btn';
+  document.querySelectorAll('#color-palette .color-swatch').forEach((el,j)=>el.className='color-swatch'+(j===i?' active':''));
+  document.getElementById('color-dot').style.background=pc;
+  document.getElementById('status-color-info').innerHTML='<span class="color-indicator" id="color-dot" style="background:'+pc+'"></span> '+pc;
+}
+initPalette();
+
+// ============================================================
+// 参数
+// ============================================================
+let penSize=6,eraserSize=60,toolMode='pen';
+let rainbowMode=false; // 🌈 彩虹流动笔
+let rainbowHue=0;
+
+// ============================================================
+// 贝塞尔绘制引擎（高精度平滑版）
+// ============================================================
+let sp=[];
+function ema(c,p,a){return a*c+(1-a)*p;}
+function spd(x1,y1,x2,y2){return Math.hypot(x2-x1,y2-y1);}
+function gw(s,b){const f=Math.min(s/15,1);return b*1.4-(b*1.4-Math.max(2,b*0.4))*f;}
+function bz(c1,c2,p1,p2,t){const u=1-t;return u*u*u*p1+3*u*u*t*c1+3*u*t*t*c2+t*t*t*p2;}
+
+function drawBz(ctx,pts,color,width){
+  if(pts.length<2)return;
+  const lw=width||(pts[0].w||4);
+  ctx.strokeStyle=color;ctx.lineCap='round';ctx.lineJoin='round';
+  if(pts.length===2){ctx.lineWidth=lw;ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);ctx.lineTo(pts[1].x,pts[1].y);ctx.stroke();return;}
+  for(let i=0;i<pts.length-2;i++){
+    const p0=pts[i],p1=pts[i+1],p2=pts[i+2];
+    const cx1=p0.x+(p1.x-p0.x)*0.5,cy1=p0.y+(p1.y-p0.y)*0.5;
+    const cx2=p1.x+(p2.x-p1.x)*0.5,cy2=p1.y+(p2.y-p1.y)*0.5;
+    const w0=p1.w||lw,w1=p2.w||lw;
+    // 12个微分段，曲线更平滑
+    for(let s=0;s<12;s++){
+      const t0=s/12,t1=(s+1)/12;
+      ctx.lineWidth=w0+(w1-w0)*(t0+t1)/2;
+      ctx.beginPath();
+      ctx.moveTo(bz(cx1,cx2,p1.x,p2.x,t0),bz(cy1,cy2,p1.y,p2.y,t0));
+      ctx.lineTo(bz(cx1,cx2,p1.x,p2.x,t1),bz(cy1,cy2,p1.y,p2.y,t1));
+      ctx.stroke();
     }
-    let savedImageData = null;
-    function saveCanvas() { savedImageData = dCtx.getImageData(0, 0, drawCanvas.width, drawCanvas.height); }
+  }
+}
+function taper(pts){
+  if(pts.length<3)return;
+  const n=Math.min(6,pts.length);
+  for(let i=0;i<n;i++)pts[pts.length-1-i].w*=1-(i/n)*0.7;
+}
 
-    // ===== 颜色 =====
-    const penColors = ['#ffffff', '#ff1744', '#ff6d00', '#ffea00', '#00e676', '#2979ff', '#9c27b0'];
-    let colorIdx = 0;
-    let penColor = penColors[0];
-    function cycleColor() {
-        colorIdx = (colorIdx + 1) % penColors.length;
-        penColor = penColors[colorIdx];
-        document.getElementById('mode-pen').textContent = `✏️ ${penColor}`;
-    }
+// ============================================================
+// 笔触
+// ============================================================
+let isD=false,lsx=0,lsy=0;
 
-    // ===== 手部绘制 =====
-    const HAND_CONNECTIONS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]];
-    // 镜像 X 坐标：摄像头画面是镜像的，坐标也要镜像
-    function m(lm) { return lm ? lm.map(p => ({x: 1 - p.x, y: p.y, z: p.z})) : lm; }
+function getCurrentColor() {
+  if (rainbowMode) {
+    rainbowHue = (rainbowHue + 3) % 360;
+    return `hsl(${rainbowHue}, 100%, 60%)`;
+  }
+  return pc;
+}
 
-    // ===== 绘制状态 =====
-    let mode = 'pen'; // 'pen' | 'eraser'
-    let isDrawing = false;
-    let lastX = 0, lastY = 0;
-    let penSize = 6;
-    let eraserSize = 60;
+function beginStr(x,y){
+  if(isD)endStr();isD=true;sp=[];lsx=x;lsy=y;
+  sp.push({x,y,w:penSize*1.2});
+}
+function addStr(x,y){
+  if(!isD)return;
+  // 更强的EMA防抖 (0.35比0.4更平滑)
+  const sx=ema(x,lsx,0.35),sy=ema(y,lsy,0.35);
+  // 过滤过近的点，避免抖动
+  const last=sp[sp.length-1];
+  if(last&&Math.hypot(sx-last.x,sy-last.y)<0.5)return;
+  lsx=sx;lsy=sy;
+  const s=spd(sp[sp.length-1].x,sp[sp.length-1].y,sx,sy);
+  sp.push({x:sx,y:sy,w:gw(s,penSize)});
+  if(sp.length>=4){
+    const color=getCurrentColor();
+    drawBz(offCtx,sp,color);
+    dCtx.drawImage(off,0,0);
+    sp=sp.slice(-2);
+  }
+}
+function endStr(){
+  if(!isD)return;isD=false;
+  if(sp.length>=2){taper(sp);
+    const color=getCurrentColor();
+    drawBz(offCtx,sp,color);
+    dCtx.drawImage(off,0,0);
+  }
+  sp=[];saveSnap();
+}
 
-    // 手势状态
-    let clearHoldTimer = 0;
-    let clearHoldStart = 0;
-    let handActive = false;
-    let lastLandmarks = null;
-    let handFrames = 0;
+// ============================================================
+// 撤销/重做
+// ============================================================
+const MX=20;let us=[],rs=[];
 
-    // 为了平滑线条，记录点队列
-    let points = [];
+function saveSnap(){
+  const d=offCtx.getImageData(0,0,off.width,off.height);
+  us.push(d);if(us.length>MX)us.shift();rs=[];
+}
+function undo(){if(!us.length)return;rs.push(offCtx.getImageData(0,0,off.width,off.height));offCtx.putImageData(us.pop(),0,0);dCtx.drawImage(off,0,0);}
+function redo(){if(!rs.length)return;us.push(offCtx.getImageData(0,0,off.width,off.height));offCtx.putImageData(rs.pop(),0,0);dCtx.drawImage(off,0,0);}
 
-    function drawHandSkeleton(lm) {
-        oCtx.clearRect(0, 0, overlay.width, overlay.height);
-        if (!lm) return;
-        lm = m(lm); // 镜像 X 坐标
-        const w = overlay.width, h = overlay.height;
+// ============================================================
+// 清空
+// ============================================================
+let chs=0,cht=0;
 
-        // 骨骼
-        oCtx.strokeStyle = 'rgba(74,158,255,0.25)'; oCtx.lineWidth = 1.5;
-        oCtx.beginPath();
-        for (const [i,j] of HAND_CONNECTIONS) { oCtx.moveTo(lm[i].x*w, lm[i].y*h); oCtx.lineTo(lm[j].x*w, lm[j].y*h); }
-        oCtx.stroke();
+function clearAll(){
+  offCtx.clearRect(0,0,off.width,off.height);drawBg(offCtx,off.width,off.height);dCtx.drawImage(off,0,0);saveSnap();
+}
+function startClr(){
+  const o=document.getElementById('clear-overlay'),r=document.getElementById('clear-ring'),t=document.getElementById('clear-text');
+  o.classList.add('active');r.className='';t.textContent='清空中';
+  r.style.animation='none';void r.offsetWidth;r.style.animation='clearSpin 3s linear forwards';
+  setTimeout(()=>{if(cht>=2.5){r.classList.add('warning');t.textContent='⚠ 即将清空';}},2500);
+  setTimeout(()=>{if(cht>=3){clearAll();o.classList.remove('active');}},3000);
+}
+function cancelClr(){document.getElementById('clear-overlay').classList.remove('active');}
 
-        // 关节点
-        for (let i = 0; i < lm.length; i++) {
-            const p = lm[i], x = p.x*w, y = p.y*h;
-            const isTip = [4,8,12,16,20].includes(i);
-            const isPalm = [0,5,9,13,17].includes(i);
-            oCtx.beginPath(); oCtx.arc(x, y, isTip?5:isPalm?2.5:1.5, 0, Math.PI*2);
-            oCtx.fillStyle = isTip ? 'rgba(255,200,50,0.7)' : isPalm ? 'rgba(74,158,255,0.5)' : 'rgba(255,255,255,0.3)';
-            oCtx.fill();
-            if (isTip) { oCtx.strokeStyle = 'rgba(255,255,255,0.4)'; oCtx.lineWidth = 1; oCtx.stroke(); }
-        }
-
-        // 绘制光标
-        const tip = lm[8]; // 食指指尖
-        if (tip) {
-            const cx = tip.x * w, cy = tip.y * h;
-            if (mode === 'pen') {
-                // 画笔光标
-                oCtx.beginPath(); oCtx.arc(cx, cy, penSize*2, 0, Math.PI*2);
-                oCtx.fillStyle = penColor + '40'; oCtx.fill();
-                oCtx.beginPath(); oCtx.arc(cx, cy, 2, 0, Math.PI*2);
-                oCtx.fillStyle = penColor; oCtx.fill();
-            } else {
-                // 五指捏合 → 橡皮光标
-                oCtx.beginPath(); oCtx.arc(cx, cy, eraserSize/2, 0, Math.PI*2);
-                oCtx.strokeStyle = 'rgba(255,100,100,0.4)'; oCtx.lineWidth = 2; oCtx.setLineDash([4,4]); oCtx.stroke(); oCtx.setLineDash([]);
-                oCtx.beginPath(); oCtx.arc(cx, cy, 3, 0, Math.PI*2);
-                oCtx.fillStyle = 'rgba(255,100,100,0.5)'; oCtx.fill();
-                // 五指标记
-                oCtx.font = '10px sans-serif'; oCtx.textAlign = 'center';
-                oCtx.fillStyle = 'rgba(255,100,100,0.3)';
-                oCtx.fillText('🤏', cx, cy - eraserSize/2 - 6);
-            }
-            // 显示拇指-食指间距（调试用）
-            const thumb = lm[4];
-            if (thumb) {
-                const d = Math.hypot(thumb.x - tip.x, thumb.y - tip.y);
-                const dd = (d * 100).toFixed(0);
-                oCtx.font = '9px monospace'; oCtx.textAlign = 'center';
-                oCtx.fillStyle = d < 0.10 ? 'rgba(100,255,100,0.5)' : 'rgba(255,255,255,0.2)';
-                oCtx.fillText(`↕${dd}`, (thumb.x + tip.x)/2 * w, (thumb.y + tip.y)/2 * h - 12);
-                // 连线
-                oCtx.beginPath(); oCtx.moveTo(thumb.x*w, thumb.y*h); oCtx.lineTo(tip.x*w, tip.y*h);
-                oCtx.strokeStyle = d < 0.10 ? 'rgba(100,255,100,0.3)' : 'rgba(255,255,255,0.08)';
-                oCtx.lineWidth = 1; oCtx.stroke();
-            }
-        }
-
-        // 模式提示
-        const palm = lm[9];
-        if (palm) {
-            const x = palm.x*w, y = palm.y*h;
-            oCtx.font = '11px system-ui, sans-serif'; oCtx.textAlign = 'center';
-            if (clearHoldTimer > 0) {
-                const pct = Math.min(clearHoldTimer / 3, 1);
-                oCtx.fillStyle = `rgba(255,200,50,${0.3 + pct * 0.5})`;
-                oCtx.fillText(`🖐 清空中 ${'█'.repeat(Math.floor(pct*6)) + '░'.repeat(6-Math.floor(pct*6))}`, x, y - 30);
-                // 进度环
-                oCtx.beginPath(); oCtx.arc(x, y - 16, 14, -Math.PI/2, -Math.PI/2 + pct * Math.PI * 2);
-                oCtx.strokeStyle = `rgba(255,200,50,${0.3 + pct * 0.3})`;
-                oCtx.lineWidth = 2; oCtx.stroke();
-            } else {
-                const label = mode === 'pen' ? '✏️ 写字中' : '🤏 五指擦除中';
-                oCtx.fillStyle = 'rgba(255,255,255,0.2)'; oCtx.fillText(label, x, y - 30);
-            }
-        }
-    }
-
-    // ===== 画线（使用 canvas 原生绘制，更顺滑） =====
-    function drawSmoothLine(x1, y1, x2, y2, color, size) {
-        dCtx.beginPath();
-        dCtx.moveTo(x1, y1);
-        dCtx.lineTo(x2, y2);
-        dCtx.strokeStyle = color;
-        dCtx.lineWidth = size * 2.5;
-        dCtx.lineCap = 'round';
-        dCtx.lineJoin = 'round';
-        dCtx.stroke();
-    }
-
-    function eraseAt(x, y, size) {
-        dCtx.save();
-        dCtx.globalCompositeOperation = 'destination-out';
-        dCtx.beginPath(); dCtx.arc(x, y, size, 0, Math.PI*2);
-        dCtx.fillStyle = 'rgba(0,0,0,1)'; dCtx.fill();
-        dCtx.restore();
-    }
-
-    function clearAll() {
-        dCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
-        saveCanvas();
-    }
-
-    // 帧发送节流锁（全局，onResults 释放，sendFrame 检查）
-    let processing = false;
-
-    // ===== 手部追踪 =====
-    function onResults(res) {
-        if (res.multiHandLandmarks?.[0]) {
-            handActive = true;
-            lastLandmarks = res.multiHandLandmarks[0];
-            let lm = m(lastLandmarks); // 镜像 X 坐标
-            handFrames++;
-
-            // 手指关键点
-            const thumbTip = lm[4], indexTip = lm[8];
-
-            // === 五指全捏（橡皮）：所有5个指尖聚拢 ===
-            const tips = [4,8,12,16,20];
-            let spread = 0;
-            for (let i = 0; i < tips.length; i++)
-                for (let j = i+1; j < tips.length; j++)
-                    spread += Math.hypot(lm[tips[i]].x-lm[tips[j]].x, lm[tips[i]].y-lm[tips[j]].y);
-            const isFivePinch = spread < 0.65;
-
-            // === 两指捏合（画笔）：拇指+食指靠近，且不能是五指全捏 ===
-            const pinchDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
-            const isPenPinch = pinchDist < 0.10 && !isFivePinch;
-
-            // === 手掌摊开 ===
-            const isOpen = spread > 1.5 && !isPenPinch && !isFivePinch;
-
-            // === 模式切换 ===
-            if (isPenPinch) {
-                mode = 'pen';
-            } else if (isFivePinch) {
-                mode = 'eraser';
-            }
-
-            document.getElementById('mode-pen').className = `mode ${mode==='pen'?'active':'inactive'}`;
-            document.getElementById('mode-eraser').className = `mode ${mode==='eraser'?'active':'inactive'}`;
-
-            // === 执行 ===
-            if (isPenPinch && handFrames > 3) {
-                // 捏合 = 写字 (不管当前mode是什么)
-                const x = indexTip.x * drawCanvas.width;
-                const y = indexTip.y * drawCanvas.height;
-
-                if (!isDrawing) {
-                    isDrawing = true;
-                    dCtx.beginPath(); dCtx.arc(x, y, penSize, 0, Math.PI*2);
-                    dCtx.fillStyle = penColor; dCtx.fill();
-                } else {
-                    drawSmoothLine(lastX, lastY, x, y, penColor, penSize);
-                }
-                lastX = x; lastY = y;
-                document.getElementById('status-text').textContent = '✏️ 书写中';
-            } else if (isFivePinch) {
-                // 五指捏合 = 擦除
-                const x = lm[9].x * drawCanvas.width;
-                const y = lm[9].y * drawCanvas.height;
-                eraseAt(x, y, eraserSize);
-                lastX = x; lastY = y;
-                isDrawing = false;
-                document.getElementById('status-text').textContent = '🤏 五指擦除中';
-            } else {
-                if (isDrawing) saveCanvas();
-                isDrawing = false;
-                document.getElementById('status-text').textContent = '✋ 待命中';
-            }
-
-            // === 清空 (手掌摊开3秒) ===
-            if (isOpen) {
-                if (clearHoldStart === 0) clearHoldStart = performance.now();
-                clearHoldTimer = (performance.now() - clearHoldStart) / 1000;
-                if (clearHoldTimer > 3.0) {
-                    clearHoldStart = 0;
-                    clearHoldTimer = 0;
-                    clearAll();
-                }
-            } else {
-                clearHoldStart = 0;
-                clearHoldTimer = 0;
-            }
-
-        } else {
-            handActive = false;
-            lastLandmarks = null;
-            handFrames = 0;
-            isDrawing = false;
-            document.getElementById('status-text').textContent = '--';
-        }
-        processing = false;
-        drawHandSkeleton(lastLandmarks);
-    }
-
-    // ===== 初始化 =====
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    saveCanvas();
-
-    async function init() {
-        const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${f}` });
-        hands.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.7, minTrackingConfidence: 0.6 });
-        hands.onResults(onResults);
-
-        // 直接用 getUserMedia 取代 Camera 工具——手机上更可靠
-        const video = document.getElementById('webcam');
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
-            audio: false,
+// ============================================================
+// ✨ 粒子消散清空（替换普通清空）
+// ============================================================
+function particleClearAll() {
+  // 获取画布像素作为粒子源
+  const imgData = offCtx.getImageData(0, 0, off.width, off.height);
+  const particles = [];
+  const step = 4; // 采样步长，控制粒子数量
+  for (let y = 0; y < off.height; y += step) {
+    for (let x = 0; x < off.width; x += step) {
+      const idx = (y * off.width + x) * 4;
+      const r = imgData.data[idx], g = imgData.data[idx+1], b = imgData.data[idx+2], a = imgData.data[idx+3];
+      if (a > 10 && !(r===26&&g===26&&b===46)) { // 排除背景色
+        particles.push({
+          x, y,
+          vx: (Math.random() - 0.5) * 10,
+          vy: (Math.random() - 0.5) * 10 - 3,
+          r, g, b, a,
+          life: 1.0
         });
-        video.srcObject = stream;
-        await video.play();
-
-        // 定时从 video 取帧发送给 MediaPipe
-        function sendFrame() {
-            if (video.readyState >= 2 && !processing) {
-                processing = true;
-                hands.send({ image: video });
-            }
-            requestAnimationFrame(sendFrame);
-        }
-        sendFrame();
-
-        document.getElementById('loading').classList.add('hidden');
+      }
     }
-    init().catch(e => {
-        document.getElementById('loading').innerHTML = `<div style="color:#ff6b6b;font-size:14px;padding:20px;text-align:center">❌ 摄像头启动失败<br><span style="font-size:11px;opacity:0.5">${e.message}</span></div>`;
-        setTimeout(() => document.getElementById('loading').classList.add('hidden'), 3000);
+  }
+  if (particles.length === 0) { clearAll(); return; }
+
+  // 清空画布显示粒子动画
+  clearAll();
+
+  // 在 pcCanvas 上播放粒子飞散
+  pcCtx.clearRect(0, 0, pcCanvas.width, pcCanvas.height);
+  let frame = 0;
+  function animParticles() {
+    frame++;
+    pcCtx.clearRect(0, 0, pcCanvas.width, pcCanvas.height);
+    let alive = false;
+    for (const p of particles) {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.1; // 重力
+      p.life -= 0.008;
+      if (p.life <= 0) continue;
+      alive = true;
+      const alpha = p.life * (p.a / 255);
+      pcCtx.fillStyle = `rgba(${p.r},${p.g},${p.b},${alpha})`;
+      pcCtx.fillRect(p.x, p.y, 2, 2);
+    }
+    if (alive && frame < 180) {
+      requestAnimationFrame(animParticles);
+    } else {
+      pcCtx.clearRect(0, 0, pcCanvas.width, pcCanvas.height);
+    }
+  }
+  animParticles();
+}
+
+// ============================================================
+// 橡皮擦
+// ============================================================
+function erase(x,y,sz){
+  offCtx.save();offCtx.globalCompositeOperation='destination-out';
+  offCtx.beginPath();offCtx.arc(x,y,sz,0,Math.PI*2);offCtx.fillStyle='rgba(0,0,0,1)';offCtx.fill();offCtx.restore();
+  dCtx.drawImage(off,0,0);
+}
+
+// ============================================================
+// 💉 吸色功能
+// ============================================================
+let pickingColor = false;
+
+function startColorPick(x, y) {
+  // 从画布读取颜色
+  const px = offCtx.getImageData(x, y, 1, 1).data;
+  if (px[3] < 10) return; // 透明/背景
+  const hex = '#' + [px[0], px[1], px[2]].map(v => v.toString(16).padStart(2,'0')).join('');
+  // 在色板中找最近的颜色
+  let bestIdx = 0, bestDist = Infinity;
+  for (let i = 0; i < PCS.length; i++) {
+    const c = PCS[i].h;
+    const r = parseInt(c.slice(1,3),16), g = parseInt(c.slice(3,5),16), b = parseInt(c.slice(5,7),16);
+    const d = Math.hypot(r-px[0], g-px[1], b-px[2]);
+    if (d < bestDist) { bestDist = d; bestIdx = i; }
+  }
+  selC(bestIdx);
+  pickingColor = false;
+  document.getElementById('color-picker-cursor').style.display = 'none';
+  document.getElementById('btn-pick-color').className = 'tool-btn';
+}
+
+// ============================================================
+// 🎬 回放功能（记录每笔并重播）
+// ============================================================
+let replayStrokes = [];
+let isReplaying = false;
+let replayTimer = null;
+let replayIdx = 0;
+
+function saveReplayStroke(points, color, width) {
+  replayStrokes.push({
+    points: JSON.parse(JSON.stringify(points)),
+    color: color,
+    width: width
+  });
+}
+
+function startReplay() {
+  if (isReplaying) return;
+  if (replayStrokes.length === 0) {
+    document.getElementById('rp-status').textContent = '无记录';
+    return;
+  }
+  isReplaying = true;
+  replayIdx = 0;
+  document.getElementById('replay-panel').classList.add('active');
+  document.getElementById('rp-status').textContent = `0/${replayStrokes.length}`;
+
+  // 清空画布
+  offCtx.clearRect(0,0,off.width,off.height);
+  drawBg(offCtx, off.width, off.height);
+
+  function playNext() {
+    if (replayIdx >= replayStrokes.length || !isReplaying) {
+      isReplaying = false;
+      document.getElementById('rp-status').textContent = '完成';
+      return;
+    }
+    const stroke = replayStrokes[replayIdx];
+    // 回放这个笔画（快速绘制）
+    const pts = stroke.points;
+    if (pts.length >= 2) {
+      drawBz(offCtx, pts, stroke.color, stroke.width);
+    }
+    dCtx.drawImage(off, 0, 0);
+    replayIdx++;
+    document.getElementById('rp-status').textContent = `${replayIdx}/${replayStrokes.length}`;
+    replayTimer = setTimeout(playNext, 100);
+  }
+  playNext();
+}
+
+function stopReplay() {
+  isReplaying = false;
+  if (replayTimer) { clearTimeout(replayTimer); replayTimer = null; }
+  document.getElementById('rp-status').textContent = '已停止';
+}
+
+// ============================================================
+// 工具栏
+// ============================================================
+document.getElementById('size-indicator').textContent=penSize;
+function setTool(m){toolMode=m;document.getElementById('btn-pen').className='tool-btn'+(m==='pen'?' active':'');document.getElementById('btn-eraser').className='tool-btn'+(m==='eraser'?' active':'');document.getElementById('status-mode').textContent=m==='pen'?'✏️ 画笔':'🧹 橡皮';}
+document.getElementById('btn-pen').addEventListener('click',()=>setTool('pen'));
+document.getElementById('btn-eraser').addEventListener('click',()=>setTool('eraser'));
+document.getElementById('btn-undo').addEventListener('click',undo);
+document.getElementById('btn-redo').addEventListener('click',redo);
+document.getElementById('btn-size-down').addEventListener('click',()=>{penSize=Math.max(3,penSize-1);document.getElementById('size-indicator').textContent=penSize;});
+document.getElementById('btn-size-up').addEventListener('click',()=>{penSize=Math.min(20,penSize+1);document.getElementById('size-indicator').textContent=penSize;});
+document.getElementById('btn-eraser-sm').addEventListener('click',()=>{eraserSize=40;});
+document.getElementById('btn-eraser-md').addEventListener('click',()=>{eraserSize=80;});
+document.getElementById('btn-eraser-lg').addEventListener('click',()=>{eraserSize=120;});
+document.getElementById('btn-save').addEventListener('click',savePNG);
+document.getElementById('btn-clear').addEventListener('click',()=>{
+  const o=document.getElementById('clear-overlay');
+  o.classList.add('active');
+  document.getElementById('clear-text').textContent='粒子消散中...';
+  setTimeout(()=>{o.classList.remove('active');},100);
+  particleClearAll();
+});
+
+// 🌈 彩虹流动笔
+document.getElementById('btn-rainbow').addEventListener('click',()=>{
+  rainbowMode=!rainbowMode;
+  document.getElementById('btn-rainbow').className='tool-btn'+(rainbowMode?' active':'');
+  document.getElementById('status-mode').textContent=rainbowMode?'🌈 彩虹笔':'✏️ 画笔';
+  if(rainbowMode)setTool('pen');
+});
+
+// 💉 吸色
+document.getElementById('btn-pick-color').addEventListener('click',()=>{
+  pickingColor=!pickingColor;
+  document.getElementById('btn-pick-color').className='tool-btn'+(pickingColor?' active':'');
+  document.getElementById('color-picker-cursor').style.display=pickingColor?'block':'none';
+});
+
+// 🎬 回放
+document.getElementById('btn-replay').addEventListener('click',()=>{
+  document.getElementById('replay-panel').classList.toggle('active');
+  if(!document.getElementById('replay-panel').classList.contains('active')) stopReplay();
+});
+document.getElementById('rp-play').addEventListener('click',startReplay);
+document.getElementById('rp-pause').addEventListener('click',()=>{isReplaying=false;if(replayTimer){clearTimeout(replayTimer);replayTimer=null;}document.getElementById('rp-status').textContent='暂停';});
+document.getElementById('rp-stop').addEventListener('click',()=>{stopReplay();document.getElementById('rp-status').textContent='已停止';});
+
+// 鼠标吸色
+dc.addEventListener('mousemove',e=>{
+  if(pickingColor){
+    const cursor=document.getElementById('color-picker-cursor');
+    cursor.style.left=e.clientX+'px';cursor.style.top=e.clientY+'px';
+    const px=offCtx.getImageData(e.clientX,e.clientY,1,1).data;
+    cursor.style.background=`rgb(${px[0]},${px[1]},${px[2]})`;
+  }
+});
+dc.addEventListener('click',e=>{if(pickingColor)startColorPick(e.clientX,e.clientY);});
+
+addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='z'){e.preventDefault();undo();}if(e.ctrlKey&&e.key==='y'){e.preventDefault();redo();}if(e.ctrlKey&&e.key==='s'){e.preventDefault();savePNG();}});
+
+// ============================================================
+// 缩放平移
+// ============================================================
+let px=0,py=0,sf=1,ipan=false,psx=0,psy=0;
+dc.addEventListener('wheel',e=>{e.preventDefault();const d=e.deltaY>0?0.9:1.1;sf=Math.max(0.3,Math.min(5,sf*d));appT();},{passive:false});
+dc.addEventListener('mousedown',e=>{if(e.button===1||(e.button===0&&e.altKey)){ipan=true;psx=e.clientX-px;psy=e.clientY-py;}});
+dc.addEventListener('mousemove',e=>{if(ipan){px=e.clientX-psx;py=e.clientY-psy;appT();}});
+dc.addEventListener('mouseup',()=>{ipan=false;});dc.addEventListener('mouseleave',()=>{ipan=false;});
+function appT(){dCtx.setTransform(1,0,0,1,0,0);dCtx.clearRect(0,0,dc.width,dc.height);dCtx.translate(px,py);dCtx.scale(sf,sf);dCtx.drawImage(off,0,0);}
+
+function savePNG(){
+  dCtx.setTransform(1,0,0,1,0,0);dCtx.drawImage(off,0,0);
+  const a=document.createElement('a');a.download='handboard_'+Date.now()+'.png';a.href=dc.toDataURL('image/png');a.click();appT();
+}
+
+// ============================================================
+// 手部骨骼绘制
+// ============================================================
+const HC=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]];
+let ha=false,ll=null,hf=0,proc=false,wd=false;
+
+function isPC(lm){
+  const pp=[0,5,9,13,17];let pz=0;for(const p of pp)pz+=lm[p].z;pz/=pp.length;
+  const tp=[4,8,12,16,20];let tz=0;for(const p of tp)tz+=lm[p].z;tz/=tp.length;
+  return pz<tz-0.02;
+}
+function mir(lm){return lm?lm.map(p=>({x:1-p.x,y:p.y,z:p.z})):lm;}
+
+function drawSkel(lm){
+  oCtx.clearRect(0,0,ov.width,ov.height);if(!lm)return;
+  lm=mir(lm);const w=ov.width,h=ov.height;
+  oCtx.strokeStyle='rgba(74,158,255,0.2)';oCtx.lineWidth=1.2;oCtx.beginPath();
+  for(const[i,j]of HC){oCtx.moveTo(lm[i].x*w,lm[i].y*h);oCtx.lineTo(lm[j].x*w,lm[j].y*h);}oCtx.stroke();
+  for(let i=0;i<lm.length;i++){
+    const p=lm[i],x=p.x*w,y=p.y*h;
+    const t=[4,8,12,16,20].includes(i),pl=[0,5,9,13,17].includes(i);
+    oCtx.beginPath();oCtx.arc(x,y,t?4:pl?2:1.2,0,Math.PI*2);
+    oCtx.fillStyle=t?'rgba(255,200,50,0.6)':pl?'rgba(74,158,255,0.4)':'rgba(255,255,255,0.2)';oCtx.fill();
+    if(t){oCtx.strokeStyle='rgba(255,255,255,0.3)';oCtx.lineWidth=0.8;oCtx.stroke();}
+  }
+  const idx=lm[8],thm=lm[4];
+  if(idx){
+    const cx=idx.x*w,cy=idx.y*h;
+    if(thm){const d=Math.hypot(thm.x-idx.x,thm.y-idx.y),dd=(d*100).toFixed(0);
+      oCtx.font='8px monospace';oCtx.textAlign='center';
+      oCtx.fillStyle=d<0.10?'rgba(100,255,100,0.4)':'rgba(255,255,255,0.12)';
+      oCtx.fillText('↕'+dd,(thm.x+idx.x)/2*w,(thm.y+idx.y)/2*h-8);
+      oCtx.beginPath();oCtx.moveTo(thm.x*w,thm.y*h);oCtx.lineTo(idx.x*w,idx.y*h);
+      oCtx.strokeStyle=d<0.10?'rgba(100,255,100,0.25)':'rgba(255,255,255,0.05)';oCtx.lineWidth=1;oCtx.stroke();
+    }
+    if(toolMode==='pen'){oCtx.beginPath();oCtx.arc(cx,cy,penSize*1.2,0,Math.PI*2);oCtx.fillStyle=pc+'30';oCtx.fill();oCtx.beginPath();oCtx.arc(cx,cy,penSize*0.3,0,Math.PI*2);oCtx.fillStyle=pc+'80';oCtx.fill();}
+    else{oCtx.beginPath();oCtx.arc(cx,cy,eraserSize/2,0,Math.PI*2);oCtx.strokeStyle='rgba(255,100,100,0.3)';oCtx.lineWidth=1.5;oCtx.setLineDash([3,3]);oCtx.stroke();oCtx.setLineDash([]);oCtx.beginPath();oCtx.arc(cx,cy,eraserSize*0.1,0,Math.PI*2);oCtx.fillStyle='rgba(255,100,100,0.3)';oCtx.fill();}
+    const palm=lm[9];
+    if(palm){const x=palm.x*w,y=palm.y*h;oCtx.font='9px system-ui,sans-serif';oCtx.textAlign='center';
+      const tips=[4,8,12,16,20];let sp=0;
+      for(let i=0;i<tips.length;i++)for(let j=i+1;j<tips.length;j++)sp+=Math.hypot(lm[tips[i]].x-lm[tips[j]].x,lm[tips[i]].y-lm[tips[j]].y);
+      if(cht>0){const p=Math.min(cht/3,1);oCtx.fillStyle=`rgba(255,200,50,${0.2+p*0.4})`;oCtx.fillText('🖐 清空中 '+Math.floor(p*100)+'%',x,y-22);oCtx.beginPath();oCtx.arc(x,y-10,10,-Math.PI/2,-Math.PI/2+p*Math.PI*2);oCtx.strokeStyle=`rgba(255,200,50,${0.2+p*0.2})`;oCtx.lineWidth=2;oCtx.stroke();}
+      else if(sp<0.65){oCtx.fillStyle='rgba(255,100,100,0.3)';oCtx.fillText('✊ 五指擦除',x,y-22);}
+      else if(Math.hypot(thm.x-idx.x,thm.y-idx.y)<0.10&&sp>=0.65){oCtx.fillStyle='rgba(100,255,100,0.3)';oCtx.fillText('🤏 两指写字',x,y-22);}
+      else{oCtx.fillStyle='rgba(255,255,255,0.1)';oCtx.fillText('✋ 待命中',x,y-22);}
+    }
+  }
+}
+
+// ============================================================
+// 旧版 MediaPipe Hands 回调
+// ============================================================
+function onHR(results){
+  if(results.multiHandLandmarks&&results.multiHandLandmarks.length>0){
+    ha=true;ll=results.multiHandLandmarks[0];const lm=mir(ll);hf++;
+    const thm=lm[4],idx=lm[8],tips=[4,8,12,16,20];let sp=0;
+    for(let i=0;i<tips.length;i++)for(let j=i+1;j<tips.length;j++)sp+=Math.hypot(lm[tips[i]].x-lm[tips[j]].x,lm[tips[i]].y-lm[tips[j]].y);
+    const is5=sp<0.65,pd=Math.hypot(thm.x-idx.x,thm.y-idx.y),is2=pd<0.10&&!is5;
+    const pc=isPC(lm),isOpen=sp>1.4&&!is2&&!is5&&!pc;
+
+    // ✊ 动态笔刷：握拳力度控制笔刷大小
+    if (!is5 && !is2 && sp > 0.5 && sp < 1.4) {
+      // 计算握拳力度（指尖蜷曲度）
+      let curlScore = 0;
+      for (let i = 1; i < 5; i++) {
+        const tip = lm[[8,12,16,20][i-1]];
+        const pip = lm[[6,10,14,18][i-1]];
+        if (tip.y > pip.y + 0.01) curlScore++;
+      }
+      // 拇指蜷曲
+      if (Math.hypot(lm[4].x - lm[1].x, lm[4].y - lm[1].y) < 0.05) curlScore++;
+      const grip = curlScore / 5; // 0~1
+      penSize = Math.round(3 + grip * 30);
+      penSize = Math.max(3, Math.min(25, penSize));
+      document.getElementById('size-indicator').textContent=penSize;
+    }
+
+    if(is2&&!pc){
+      setTool('pen');
+      if(hf>3&&!pc){
+        const x=idx.x*dc.width,y=idx.y*dc.height;
+        const tx=(x-px)/sf,ty=(y-py)/sf;
+        if(!wd){beginStr(tx,ty);wd=true;}else addStr(tx,ty);
+        document.getElementById('status-mode').textContent=rainbowMode?'🌈 彩虹笔':'✏️ 书写中';
+      }else{if(wd){endStr();wd=false;}}
+    }else{if(wd){endStr();wd=false;}}
+
+    if(is5&&!pc){
+      setTool('eraser');
+      const x=idx.x*dc.width,y=idx.y*dc.height;
+      erase((x-px)/sf,(y-py)/sf,eraserSize);
+      document.getElementById('status-mode').textContent='🧹 擦除中';
+    }
+
+    if(isOpen&&!pc){
+      if(chs===0){chs=performance.now();startClr();}cht=(performance.now()-chs)/1000;
+    }else{
+      if(cht>0&&cht<3)cancelClr();chs=0;cht=0;
+    }
+  }else{
+    ha=false;ll=null;hf=0;if(wd){endStr();wd=false;}if(cht>0){cancelClr();chs=0;cht=0;}
+  }
+  proc=false;drawSkel(ll);
+}
+
+// ============================================================
+// 进度显示
+// ============================================================
+function setProg(pct, msg){
+  const b=document.getElementById('progress-bar'),t=document.getElementById('progress-text');
+  if(b)b.style.width=Math.min(pct,100)+'%';
+  if(t)t.textContent=msg||'加载模型...';
+}
+const flushDOM=()=>new Promise(r=>requestAnimationFrame(()=>setTimeout(r,0)));
+
+// ============================================================
+// 初始化 MediaPipe（旧版 API）
+// ============================================================
+async function initMP(){
+  setProg(10,'初始化手势引擎...');await flushDOM();
+
+  const hands = new Hands({
+    locateFile: (f) => 'https://unpkg.com/@mediapipe/hands@0.4.1675469240/' + f
+  });
+
+  hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.7,
+    minTrackingConfidence: 0.6
+  });
+
+  hands.onResults(onHR);
+
+  setProg(50,'模型就绪');await flushDOM();
+  return hands;
+}
+
+async function init(){
+  let hands;try{hands=await initMP();}catch(e){failUI('手势模型加载失败',e);return;}
+  setProg(70,'启动摄像头...');await flushDOM();
+  let v;try{
+    v=document.getElementById('webcam');
+    const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:320},height:{ideal:240}},audio:false});
+    v.srcObject=s;await v.play();
+    const camera=new Camera(v,{
+      onFrame:async()=>{
+        if(!proc){proc=true;try{await hands.send({image:v});}catch(e){proc=false;}}
+      },width:640,height:480
     });
-    </script>
+    camera.start();
+  }catch(e){failUI('摄像头启动失败',e);return;}
+
+  setProg(100,'就绪');await flushDOM();
+  document.getElementById('loading').classList.add('hidden');saveSnap();
+}
+function failUI(t,e){document.getElementById('loading').innerHTML='<div style="color:#ff6b6b;font-size:13px;padding:20px;text-align:center">❌ '+t+'<br><span style="font-size:10px;opacity:0.5;display:block;margin-top:6px">'+e.message+'</span></div>';setTimeout(()=>document.getElementById('loading').classList.add('hidden'),2500);}
+init().catch(e=>failUI('初始化失败',e));
+addEventListener('beforeunload',()=>{const v=document.getElementById('webcam');if(v&&v.srcObject)v.srcObject.getTracks().forEach(t=>t.stop());});
+</script>
 </body>
 </html>

@@ -2,323 +2,795 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Orbit — 手势控球</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>手势控球</title>
 <style>
-* { margin:0;padding:0;box-sizing:border-box; }
-body { overflow:hidden;background:#08080e;font-family:system-ui,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none; }
-#three-canvas { display:block;position:fixed;inset:0;z-index:1; }
-#hand-overlay { position:fixed;inset:0;z-index:2;pointer-events:none; }
-#webcam-container { position:fixed;bottom:20px;right:20px;width:160px;height:120px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);z-index:3;box-shadow:0 4px 20px rgba(0,0,0,0.5); }
-#webcam-container video { width:100%;height:100%;object-fit:cover;transform:scaleX(-1); }
-#webcam-container { position:fixed;left:-9999px;opacity:0;pointer-events:none;z-index:3; }
-#loading { position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#08080e;color:#fff;transition:opacity 0.8s; }
-#loading.hidden { opacity:0;pointer-events:none; }
-#loading .spinner { width:28px;height:28px;border:2px solid rgba(255,255,255,0.06);border-top-color:#4a9eff;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:14px; }
-@keyframes spin { to{transform:rotate(360deg);} }
-#back-btn { position:fixed;top:20px;left:20px;z-index:5;color:rgba(255,255,255,0.3);font-size:13px;text-decoration:none;padding:8px 16px;border:1px solid rgba(255,255,255,0.08);border-radius:20px;transition:all 0.3s;backdrop-filter:blur(8px); }
-#back-btn:hover { border-color:rgba(255,255,255,0.2);color:rgba(255,255,255,0.6); }
-#toolbar { position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:5;display:flex;gap:6px;align-items:center;background:rgba(0,0,0,0.5);backdrop-filter:blur(12px);padding:6px 12px;border-radius:24px;border:1px solid rgba(255,255,255,0.06); }
-#toolbar .mode-btn { padding:5px 12px;border-radius:18px;font-size:12px;letter-spacing:0.5px;transition:all 0.3s;cursor:pointer;border:none;background:transparent;color:rgba(255,255,255,0.25); }
-#toolbar .mode-btn.active { background:rgba(255,255,255,0.1);color:#fff; }
-#toolbar .mode-btn:hover { color:rgba(255,255,255,0.5);background:rgba(255,255,255,0.05); }
-#hint { position:fixed;bottom:30px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.08);font-size:11px;z-index:3;pointer-events:none;text-align:center; }
+*{margin:0;padding:0;box-sizing:border-box}
+body{overflow:hidden;background:#08080e;font-family:'Inter',system-ui,-apple-system,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none}
+#three-canvas{display:block;position:fixed;inset:0;z-index:1}
+#hand-overlay{position:fixed;inset:0;z-index:2;pointer-events:none}
+#webcam-container{position:fixed;left:0;top:0;width:640px;height:480px;opacity:0;pointer-events:none;overflow:hidden;z-index:0;transform:scale(.01);transform-origin:top left}
+#webcam-container video{width:640px;height:480px;object-fit:cover}
+#loading{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#08080e,#0d0d1a 30%,#1a0a2e 60%,#08080e);background-size:400% 400%;animation:gs 4s ease infinite;transition:opacity .8s ease,transform .8s ease}
+#loading.hidden{opacity:0;transform:scale(1.05);pointer-events:none}
+@keyframes gs{0%{background-position:0 50%}50%{background-position:100% 50%}100%{background-position:0 50%}}
+#loading .logo{font-size:48px;margin-bottom:16px;animation:pl 2s ease-in-out infinite}
+@keyframes pl{0%,100%{transform:scale(1);opacity:.8}50%{transform:scale(1.1);opacity:1}}
+.lr{width:48px;height:48px;border-radius:50%;border:2px solid rgba(74,158,255,.08);border-top-color:#4a9eff;border-right-color:#9c27b0;animation:sp 1s cubic-bezier(.45,.05,.55,.95) infinite;margin-bottom:20px}
+@keyframes sp{to{transform:rotate(360deg)}}
+#loading .text{color:rgba(255,255,255,.4);font-size:13px;letter-spacing:2px;font-weight:300}
+#loading .subtext{color:rgba(255,255,255,.15);font-size:11px;letter-spacing:1px;margin-top:8px;font-weight:300}
+#loading .progress-text{color:rgba(74,158,255,.4);font-size:10px;letter-spacing:1px;margin-top:12px}
+#loading .progress-bar-wrap{width:160px;height:2px;background:rgba(255,255,255,.04);border-radius:2px;margin-top:8px;overflow:hidden}
+#loading .progress-bar{height:100%;width:0%;background:linear-gradient(90deg,#4a9eff,#9c27b0);border-radius:2px;transition:width .3s}
+#back-btn{position:fixed;top:20px;left:20px;z-index:5;color:rgba(255,255,255,.25);font-size:12px;text-decoration:none;padding:6px 14px;border:1px solid rgba(255,255,255,.06);border-radius:20px;transition:all .3s;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);background:rgba(0,0,0,.2)}
+#back-btn:hover{border-color:rgba(255,255,255,.15);color:rgba(255,255,255,.5);background:rgba(255,255,255,.04)}
+#toolbar{position:fixed;bottom:28px;right:28px;z-index:5;display:flex;flex-direction:column;gap:3px;background:rgba(10,10,20,.55);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);padding:6px;border-radius:16px;border:1px solid rgba(255,255,255,.06);box-shadow:0 8px 40px rgba(0,0,0,.4)}
+#toolbar .mode-btn{padding:6px 14px;border-radius:10px;font-size:11px;letter-spacing:.3px;transition:all .3s cubic-bezier(.4,0,.2,1);cursor:pointer;border:none;background:transparent;color:rgba(255,255,255,.3);text-align:left;white-space:nowrap;font-family:inherit;font-weight:400;position:relative}
+#toolbar .mode-btn:hover{color:rgba(255,255,255,.6);background:rgba(255,255,255,.04)}
+#toolbar .mode-btn.active{background:rgba(74,158,255,.12);color:#fff;box-shadow:inset 0 0 0 1px rgba(74,158,255,.15)}
+#toolbar .mode-btn .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:8px;vertical-align:middle;transition:all .3s}
+.mode-btn.active .dot{box-shadow:0 0 8px currentColor}
+#status-bar{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);z-index:4;pointer-events:none;display:flex;gap:16px;color:rgba(255,255,255,.2);font-size:11px;font-weight:300;letter-spacing:.5px;background:rgba(0,0,0,.3);backdrop-filter:blur(8px);padding:6px 16px;border-radius:20px;border:1px solid rgba(255,255,255,.04)}
+#status-bar .sep{color:rgba(255,255,255,.06)}
+#status-bar .color-label{color:rgba(255,200,50,.4)}
+#hint{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.06);font-size:10px;z-index:3;pointer-events:none;text-align:center;white-space:nowrap}
+.vf{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0);width:120px;height:120px;border-radius:50%;background:radial-gradient(circle,rgba(255,200,50,.15),transparent 70%);pointer-events:none;z-index:6;transition:transform .15s cubic-bezier(.34,1.56,.64,1)}
+.vf.active{transform:translate(-50%,-50%) scale(1.5)}
+#firework-flash{position:fixed;inset:0;z-index:3;pointer-events:none;background:radial-gradient(circle at center,rgba(255,255,255,.15),transparent 40%);opacity:0;transition:opacity .1s}
+#firework-flash.active{opacity:1}
+@media(max-width:600px){#toolbar{bottom:20px;right:16px;gap:2px;padding:5px;border-radius:12px}#toolbar .mode-btn{padding:5px 10px;font-size:10px}#status-bar{font-size:9px;padding:4px 10px;gap:8px;bottom:70px}#hint{display:none}#back-btn{top:12px;left:12px;font-size:10px;padding:4px 10px}}
+@media(orientation:landscape) and (max-height:500px){#status-bar{bottom:60px}#toolbar{bottom:16px;right:16px}}
 </style>
 </head>
 <body>
 <a id="back-btn" href="index.html">← 返回</a>
-<div id="loading"><div class="spinner"></div><div>载入中...</div></div>
+<div id="loading"><div class="lr"></div><div class="logo">🌌</div><div class="text">载入中</div><div class="subtext">正在启动手势追踪系统</div><div class="progress-text" id="progress-text">加载模型...</div><div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div></div>
 <div id="webcam-container"><video id="webcam" playsinline></video></div>
 <canvas id="hand-overlay"></canvas>
+<div class="vf" id="vibe-feedback"></div>
+<div id="firework-flash"></div>
 <div id="toolbar">
-<button class="mode-btn active" data-mode="0">🌌 星云</button>
-<button class="mode-btn" data-mode="1">💥 爆散</button>
-<button class="mode-btn" data-mode="2">🌀 螺旋</button>
-<button class="mode-btn" data-mode="3">🌊 波光</button>
+<button class="mode-btn active" data-mode="0"><span class="dot" style="color:#6a9eff"></span>🌌 星云</button>
+<button class="mode-btn" data-mode="1"><span class="dot" style="color:#ff6b6b"></span>💥 爆散</button>
+<button class="mode-btn" data-mode="2"><span class="dot" style="color:#69db7c"></span>🌀 螺旋</button>
+<button class="mode-btn" data-mode="3"><span class="dot" style="color:#74c0fc"></span>🌊 波光</button>
 </div>
-<div id="hint">👆 滑动旋转 · 🖐 挥手旋转 · 🤏 捏合停止 · ✊ 握拳换色 · ⌨ 空格换色/方向键</div>
+<div id="status-bar"><span id="status-mode">🌌 星云</span><span class="sep">·</span><span id="status-gesture">✋ 待命中</span><span class="sep">·</span><span id="status-color" class="color-label">🎨 红色</span></div>
+<div id="hint">👆 滑动 · 🖐 挥手旋转 · 🤏 捏合停止 · ✊ 握拳爆散 · ✌️ V字换色 · 🎤 语音</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.js" crossorigin="anonymous"></script>
 <script>
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x08080e);
-const cam = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
-cam.position.z = 4.5;
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
-renderer.domElement.id = 'three-canvas';
-document.body.prepend(renderer.domElement);
-window.addEventListener('resize', () => {
-    cam.aspect = window.innerWidth / window.innerHeight;
-    cam.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    overlay.width = window.innerWidth; overlay.height = window.innerHeight;
-});
-const overlay = document.getElementById('hand-overlay');
-const ctx = overlay.getContext('2d');
-overlay.width = window.innerWidth; overlay.height = window.innerHeight;
-const HAND_CONNECTIONS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]];
-function m(lm) { return lm ? lm.map(p => ({x: 1 - p.x, y: p.y, z: p.z})) : lm; }
-
-let processing = false;
-function drawHandSkeleton(landmarks) {
-    ctx.clearRect(0, 0, overlay.width, overlay.height);
-    if (!landmarks) return;
-    landmarks = m(landmarks);
-    const w = overlay.width, h = overlay.height;
-    ctx.strokeStyle = 'rgba(74, 158, 255, 0.35)'; ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (const [i,j] of HAND_CONNECTIONS) {
-        ctx.moveTo(landmarks[i].x*w, landmarks[i].y*h);
-        ctx.lineTo(landmarks[j].x*w, landmarks[j].y*h);
-    }
-    ctx.stroke();
-    for (let i = 0; i < landmarks.length; i++) {
-        const p = landmarks[i], x = p.x*w, y = p.y*h;
-        const isTip = [4,8,12,16,20].includes(i);
-        const isPalm = [0,5,9,13,17].includes(i);
-        ctx.beginPath(); ctx.arc(x, y, isTip ? 6 : isPalm ? 3 : 2, 0, Math.PI*2);
-        ctx.fillStyle = isTip ? 'rgba(255,200,50,0.8)' : isPalm ? 'rgba(74,158,255,0.6)' : 'rgba(255,255,255,0.4)';
-        ctx.fill(); if (isTip) { ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.5; ctx.stroke(); }
-    }
-    const palm = landmarks[9];
-    if (palm) {
-        const x = palm.x*w, y = palm.y*h;
-        const tips = [4,8,12,16,20];
-        let cluster = 0;
-        for (let i = 0; i < tips.length; i++) for (let j = i+1; j < tips.length; j++) cluster += Math.hypot(landmarks[tips[i]].x-landmarks[tips[j]].x, landmarks[tips[i]].y-landmarks[tips[j]].y);
-        let curled = 0;
-        for (let i = 1; i < 5; i++) { const tip = landmarks[[8,12,16,20][i-1]], pip = landmarks[[6,10,14,18][i-1]]; if (tip.y > pip.y + 0.02) curled++; }
-        if (Math.hypot(landmarks[4].x-landmarks[1].x, landmarks[4].y-landmarks[1].y) < 0.04) curled++;
-        ctx.font = '11px system-ui, sans-serif'; ctx.textAlign = 'center';
-        if (cluster < 0.6) {
-            ctx.fillStyle = 'rgba(255,100,100,0.5)'; ctx.fillText("🤏 捏合 = 停止", x, y-30);
-            ctx.beginPath(); ctx.arc(x, y, 20, 0, Math.PI*2);
-            ctx.strokeStyle = 'rgba(255,100,100,0.15)'; ctx.lineWidth = 2; ctx.stroke();
-        } else if (curled >= 4) {
-            const names = ["🔴红","🟠橙","🟡黄","🟢绿","🔵蓝","🟣靛","🟣紫"];
-            ctx.fillStyle = 'rgba(255,200,50,0.5)'; ctx.fillText("✊ 握拳换色 \u2192 " + names[tIdx], x, y-30);
-        } else {
-            ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillText("✋ 控制中", x, y-30);
-        }
-    }
-}
+// ============================================================
+// 全局变量
+// ============================================================
 const N = 4000;
-const pos = new Float32Array(N*3), vel = new Float32Array(N*3);
-const col = new Float32Array(N*3), tcol = new Float32Array(N*3);
-const target = new Float32Array(N*3);
-const thetaArr = new Float32Array(N), phiArr = new Float32Array(N), phase = new Float32Array(N);
-const themes = [[0xff1744],[0xff6d00],[0xffea00],[0x00e676],[0x2979ff],[0x3d5afe],[0x9c27b0]];
-let tIdx = 0, theme = themes[0];
+let SC, CAM, RENDERER, POINTS, MAT, GEO, SF, NPTS, SM, NM, PT;
+let P, COL, TCOL, TARGET, SZ, phiArr, thetaArr, PH, NO;
+let ORIG_TARGET;   // 保存每个粒子的原始目标位置（用于烟花恢复）
+let AT = 0, CM = 0;
+const MN = ['🌌 星云', '💥 爆散', '🌀 螺旋', '🌊 波光'];
+let VX = 0, VY = 0, MD = false, HA = false, LL = null;
+let PHX = 0, PHY = 0, PMX = 0, PMY = 0, HF = 0, FHT = 0;
+const KEYS = {};
+let PR = false, TFP = false, PLA = false, HR = null, VR = null, OKT = 0;
+const TH = [
+  {h:0xff1744,n:'红色'},{h:0xff6d00,n:'橙色'},{h:0xffea00,n:'黄色'},
+  {h:0x00e676,n:'绿色'},{h:0x2979ff,n:'蓝色'},{h:0x3d5afe,n:'靛色'},{h:0x9c27b0,n:'紫色'}
+];
+let TI = 0, THM = TH[TI];
+let TC = null, TX = null, TE = true;
+let REC = null, VA = false;
+let GA = false, GAL = 0, GBE = 0, GGA = 0;
 
-for (let i = 0; i < N; i++) {
-    phiArr[i] = Math.acos(1-2*(i+0.5)/N);
-    thetaArr[i] = Math.PI*(1+Math.sqrt(5))*i;
-    phase[i] = Math.random() * Math.PI * 2;
-}
+// 🧨 烟花状态：使用 4000 个主粒子
+let FW_ACTIVE = false;
+let FW_TIME = 0;
+const FW_DURATION = 2.2;
+// 存储每个粒子的径向方向单位向量（烟花触发时记录）
+let FW_DIR_X = new Float32Array(N);
+let FW_DIR_Y = new Float32Array(N);
+let FW_DIR_Z = new Float32Array(N);
+let FW_ORIG_SZ = new Float32Array(N); // 原始大小备份
 
-function getParticleColor(t, phi) {
-    const c = new THREE.Color(t[0]);
-    c.lerp(new THREE.Color(1,1,0.8), Math.abs(Math.cos(phi)) * 0.5 + 0.2);
-    return c;
-}
-function initColors(t) {
-    for (let i = 0; i < N; i++) {
-        const c = getParticleColor(t, phiArr[i]);
-        col[i*3]=tcol[i*3]=c.r; col[i*3+1]=tcol[i*3+1]=c.g; col[i*3+2]=tcol[i*3+2]=c.b;
-    }
-}
-
+const HC = [
+  [0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],
+  [0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],
+  [0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]
+];
 const R = 1.5;
-function computeTarget(mode, time, out) {
-    if (mode === 0) {
-        for (let i = 0; i < N; i++) {
-            const r = R * (0.96 + Math.sin(phase[i] + time*0.3)*0.04);
-            out[i*3]=Math.sin(phiArr[i])*Math.cos(thetaArr[i])*r;
-            out[i*3+1]=Math.sin(phiArr[i])*Math.sin(thetaArr[i])*r;
-            out[i*3+2]=Math.cos(phiArr[i])*r;
-        }
-    } else if (mode === 1) {
-        for (let i = 0; i < N; i++) {
-            const b = 0.15 + 0.85 * (0.5 + 0.5 * Math.sin(time * 1.2 + phase[i]));
-            const r = R * b;
-            out[i*3]=Math.sin(phiArr[i])*Math.cos(thetaArr[i])*r;
-            out[i*3+1]=Math.sin(phiArr[i])*Math.sin(thetaArr[i])*r;
-            out[i*3+2]=Math.cos(phiArr[i])*r;
-        }
-    } else if (mode === 2) {
-        for (let i = 0; i < N; i++) {
-            const arm = Math.floor(phase[i] / (Math.PI*2/3)) % 3;
-            const baseAngle = thetaArr[i] * 0.3 + arm * Math.PI*2/3 + time * 0.2;
-            const radius = R * (0.1 + 0.9 * (i/N));
-            const spread = 0.04 * radius * R;
-            const x = Math.cos(baseAngle) * radius + (Math.random()-0.5)*spread;
-            const z = Math.sin(baseAngle) * radius + (Math.random()-0.5)*spread;
-            const y = (Math.random()-0.5) * 0.08 * (1 - radius/R);
-            out[i*3]=x; out[i*3+1]=y; out[i*3+2]=z;
-        }
-    } else if (mode === 3) {
-        for (let i = 0; i < N; i++) {
-            const wave = Math.sin(thetaArr[i]*6 + time*1.5) * Math.cos(phiArr[i]*4 + time*1.0) * 0.2;
-            const r = R * (1 + wave);
-            out[i*3]=Math.sin(phiArr[i])*Math.cos(thetaArr[i])*r;
-            out[i*3+1]=Math.sin(phiArr[i])*Math.sin(thetaArr[i])*r;
-            out[i*3+2]=Math.cos(phiArr[i])*r;
-        }
+
+// ============================================================
+// Three.js 初始化
+// ============================================================
+function init3() {
+  SC = new THREE.Scene();
+  SC.background = new THREE.Color(0x08080e);
+  SC.fog = new THREE.Fog(0x08080e, 5, 20);
+
+  CAM = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1000);
+  CAM.position.z = 4.5;
+
+  RENDERER = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  RENDERER.setSize(innerWidth, innerHeight);
+  RENDERER.setPixelRatio(Math.min(devicePixelRatio, 2));
+  RENDERER.domElement.id = 'three-canvas';
+  document.body.prepend(RENDERER.domElement);
+
+  const OV = document.getElementById('hand-overlay');
+  OV.width = innerWidth;
+  OV.height = innerHeight;
+
+  window.addEventListener('resize', () => {
+    CAM.aspect = innerWidth / innerHeight;
+    CAM.updateProjectionMatrix();
+    RENDERER.setSize(innerWidth, innerHeight);
+    OV.width = innerWidth;
+    OV.height = innerHeight;
+    if (TC) { TC.width = innerWidth; TC.height = innerHeight; }
+  });
+
+  // 粒子数组
+  P = new Float32Array(N * 3);
+  COL = new Float32Array(N * 3);
+  TCOL = new Float32Array(N * 3);
+  TARGET = new Float32Array(N * 3);
+  ORIG_TARGET = new Float32Array(N * 3);
+  SZ = new Float32Array(N);
+  phiArr = new Float32Array(N);
+  thetaArr = new Float32Array(N);
+  PH = new Float32Array(N);
+  NO = new Float32Array(N * 2);
+
+  for (let i = 0; i < N; i++) {
+    phiArr[i] = Math.acos(1 - 2 * (i + 0.5) / N);
+    thetaArr[i] = Math.PI * (1 + Math.sqrt(5)) * i;
+    PH[i] = Math.random() * Math.PI * 2;
+    NO[i * 2] = Math.random() * 100;
+    NO[i * 2 + 1] = Math.random() * 100;
+    SZ[i] = 0.04 + Math.random() * 0.06;
+    FW_ORIG_SZ[i] = SZ[i];
+  }
+
+  initCol();
+  CT(0, 0, P);
+  for (let i = 0; i < N * 3; i++) {
+    TARGET[i] = P[i];
+    ORIG_TARGET[i] = P[i];
+  }
+
+  GEO = new THREE.BufferGeometry();
+  GEO.setAttribute('position', new THREE.BufferAttribute(P, 3));
+  GEO.setAttribute('color', new THREE.BufferAttribute(COL, 3));
+  GEO.setAttribute('size', new THREE.BufferAttribute(SZ, 1));
+
+  PT = makeGlow();
+  MAT = new THREE.PointsMaterial({
+    size: 0.06, vertexColors: true, transparent: true,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+    sizeAttenuation: true, opacity: 0.95, map: PT, toneMapped: false
+  });
+  POINTS = new THREE.Points(GEO, MAT);
+  SC.add(POINTS);
+  initStars();
+}
+
+function makeGlow() {
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 64;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.1, 'rgba(255,255,255,0.9)');
+  g.addColorStop(0.3, 'rgba(255,255,255,0.4)');
+  g.addColorStop(0.6, 'rgba(255,255,255,0.08)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g;
+  x.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
+
+function initStars() {
+  const C = 600;
+  const SG = new THREE.BufferGeometry();
+  const SP = new Float32Array(C * 3), SS = new Float32Array(C);
+  for (let i = 0; i < C; i++) {
+    SP[i * 3] = (Math.random() - 0.5) * 80;
+    SP[i * 3 + 1] = (Math.random() - 0.5) * 80;
+    SP[i * 3 + 2] = (Math.random() - 0.5) * 60 - 10;
+    SS[i] = 0.01 + Math.random() * 0.04;
+  }
+  SG.setAttribute('position', new THREE.BufferAttribute(SP, 3));
+  SG.setAttribute('size', new THREE.BufferAttribute(SS, 1));
+  SM = new THREE.PointsMaterial({
+    color: 0xffffff, size: 0.025, transparent: true, opacity: 0.15,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+    sizeAttenuation: true, map: PT
+  });
+  SF = new THREE.Points(SG, SM);
+  SC.add(SF);
+
+  const NG = new THREE.BufferGeometry();
+  const NP = new Float32Array(80 * 3);
+  for (let i = 0; i < 80; i++) {
+    NP[i * 3] = (Math.random() - 0.5) * 50;
+    NP[i * 3 + 1] = (Math.random() - 0.5) * 40;
+    NP[i * 3 + 2] = (Math.random() - 0.5) * 40 - 12;
+  }
+  NG.setAttribute('position', new THREE.BufferAttribute(NP, 3));
+  NM = new THREE.PointsMaterial({
+    color: 0x4a6eff, size: 0.06, transparent: true, opacity: 0.03,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+    sizeAttenuation: true, map: PT
+  });
+  NPTS = new THREE.Points(NG, NM);
+  SC.add(NPTS);
+}
+
+function gc(h, p) {
+  const c = new THREE.Color(h);
+  c.lerp(new THREE.Color(0xffffff), Math.abs(Math.cos(p)) * 0.25);
+  return c;
+}
+
+function initCol() {
+  for (let i = 0; i < N; i++) {
+    const c = gc(THM.h, phiArr[i]);
+    COL[i * 3] = TCOL[i * 3] = c.r;
+    COL[i * 3 + 1] = TCOL[i * 3 + 1] = c.g;
+    COL[i * 3 + 2] = TCOL[i * 3 + 2] = c.b;
+  }
+}
+
+function CT(m, t, o) {
+  if (m === 0) {
+    for (let i = 0; i < N; i++) {
+      const br = 0.92 + Math.sin(PH[i] + t * 0.3) * 0.08;
+      const dr = 0.015 * Math.sin(t * 0.5 + NO[i * 2]);
+      const rr = R * br + dr;
+      const th = thetaArr[i] + t * 0.02;
+      o[i * 3] = Math.sin(phiArr[i]) * Math.cos(th) * rr;
+      o[i * 3 + 1] = Math.sin(phiArr[i]) * Math.sin(th) * rr;
+      o[i * 3 + 2] = Math.cos(phiArr[i]) * rr;
     }
+  } else if (m === 1) {
+    const p = t * 1.2;
+    for (let i = 0; i < N; i++) {
+      const bb = 0.5 + 0.5 * Math.sin(p + PH[i]);
+      const isShrap = i % 7 === 0;
+      const ba = isShrap ? 0.95 : 0.85;
+      const b = 0.15 + ba * bb;
+      const rr = R * b;
+      const to = isShrap ? Math.sin(p * 0.7 + NO[i * 2]) * 0.3 : 0;
+      const po = isShrap ? Math.cos(p * 0.5 + NO[i * 2 + 1]) * 0.15 : 0;
+      const th = thetaArr[i] + to;
+      const ph = phiArr[i] + po;
+      o[i * 3] = Math.sin(ph) * Math.cos(th) * rr;
+      o[i * 3 + 1] = Math.sin(ph) * Math.sin(th) * rr;
+      o[i * 3 + 2] = Math.cos(ph) * rr;
+    }
+  } else if (m === 2) {
+    const ss = t * 0.25, aa = ss * 0.6;
+    for (let i = 0; i < N; i++) {
+      const ai = i % 3, pi = Math.floor(i / 3), tp = Math.ceil(N / 3);
+      const tt = pi / tp, ab = ai * (Math.PI * 2 / 3), tw = tt * 3.5;
+      const rd = R * Math.pow(tt, 0.7) * 0.92, an = ab + aa + tw;
+      const tr = 0.025 * rd * (2 + Math.sin(NO[i * 2] * 7 + t * 0.2));
+      const tp2 = NO[i * 2 + 1] * 6.28;
+      o[i * 3] = Math.cos(an) * rd + Math.cos(tp2) * tr;
+      o[i * 3 + 1] = (Math.sin(NO[i * 2] * 5 + t * 0.1)) * tr * 0.5 + 0.4 * (tt - 0.5) * R * 0.3;
+      o[i * 3 + 2] = Math.sin(an) * rd + Math.sin(tp2) * tr;
+    }
+  } else if (m === 3) {
+    for (let i = 0; i < N; i++) {
+      const th = thetaArr[i], ph = phiArr[i];
+      const w1 = Math.sin(th * 6 + t * 1.5) * 0.15;
+      const w2 = Math.cos(ph * 4 + t * 1.0) * 0.1;
+      const w3 = Math.sin((th + ph) * 3 + t * 0.8) * 0.08;
+      const rr = R * (1 + w1 + w2 + w3);
+      o[i * 3] = Math.sin(ph) * Math.cos(th) * rr;
+      o[i * 3 + 1] = Math.sin(ph) * Math.sin(th) * rr;
+      o[i * 3 + 2] = Math.cos(ph) * rr;
+    }
+  }
 }
 
-const geo = new THREE.BufferGeometry();
-initColors(theme);
-computeTarget(0, 0, pos);
-for (let i = 0; i < N*3; i++) target[i] = pos[i];
-geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-function makeCircleTex() {
-    const c=document.createElement('canvas'); c.width=32; c.height=32;
-    const x=c.getContext('2d');
-    const g=x.createRadialGradient(16,16,0,16,16,16);
-    g.addColorStop(0,'rgba(255,255,255,1)');
-    g.addColorStop(0.3,'rgba(255,255,255,1)');
-    g.addColorStop(1,'rgba(255,255,255,0)');
-    x.fillStyle=g; x.fillRect(0,0,32,32);
-    return new THREE.CanvasTexture(c);
+// ============================================================
+// 🧨 烟花：用4000个主粒子扩散再聚合
+// ============================================================
+function trigFW() {
+  if (FW_ACTIVE) return;
+  FW_ACTIVE = true;
+  FW_TIME = 0;
+
+  // 全屏闪光
+  document.getElementById('firework-flash').classList.add('active');
+  setTimeout(() => document.getElementById('firework-flash').classList.remove('active'), 200);
+
+  // 记录当前粒子位置作为原始位置，并计算径向方向
+  for (let i = 0; i < N; i++) {
+    const i3 = i * 3;
+    const x = P[i3], y = P[i3 + 1], z = P[i3 + 2];
+    const len = Math.hypot(x, y, z) || 1;
+    FW_DIR_X[i] = x / len;
+    FW_DIR_Y[i] = y / len;
+    FW_DIR_Z[i] = z / len;
+    FW_ORIG_SZ[i] = SZ[i];
+    // 保存当前正常目标作为恢复基准
+    ORIG_TARGET[i3] = TARGET[i3];
+    ORIG_TARGET[i3 + 1] = TARGET[i3 + 1];
+    ORIG_TARGET[i3 + 2] = TARGET[i3 + 2];
+  }
 }
-const mat = new THREE.PointsMaterial({
-    size:0.035, vertexColors:true, transparent:true,
-    blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true, opacity:0.85,
-    map:makeCircleTex(),
-});
-const points = new THREE.Points(geo, mat);
-scene.add(points);
 
-const starGeo = new THREE.BufferGeometry();
-const starPos = new Float32Array(300*3);
-for(let i=0;i<300;i++){ starPos[i*3]=(Math.random()-0.5)*60; starPos[i*3+1]=(Math.random()-0.5)*60; starPos[i*3+2]=(Math.random()-0.5)*60-15; }
-starGeo.setAttribute('position',new THREE.BufferAttribute(starPos,3));
-const starMat = new THREE.PointsMaterial({ color:0xffffff, size:0.02, transparent:true, opacity:0.12, blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true });
-scene.add(new THREE.Points(starGeo, starMat));
+function applyFWTargets() {
+  if (!FW_ACTIVE) return;
+  FW_TIME += 0.016;
+  const t = FW_TIME / FW_DURATION; // 0~1
 
-let currentMode = 0;
-const modeBtns = document.querySelectorAll('#toolbar .mode-btn');
+  if (t >= 1) {
+    FW_ACTIVE = false;
+    // 恢复正常目标
+    for (let i = 0; i < N * 3; i++) TARGET[i] = ORIG_TARGET[i];
+    // 恢复原始大小
+    for (let i = 0; i < N; i++) SZ[i] = FW_ORIG_SZ[i];
+    GEO.attributes.size.needsUpdate = true;
+    return;
+  }
+
+  // 第一阶段扩散 (0~0.45)
+  if (t < 0.45) {
+    const p = t / 0.45; // 0~1
+    const ease = p * p; // 加速
+    const dist = 2.5 + ease * 3.5; // 从2.5R到6R
+    const sizeMul = 1 + ease * 5; // 最大变大6倍
+    for (let i = 0; i < N; i++) {
+      const i3 = i * 3;
+      TARGET[i3] = ORIG_TARGET[i3] + FW_DIR_X[i] * dist * R;
+      TARGET[i3 + 1] = ORIG_TARGET[i3 + 1] + FW_DIR_Y[i] * dist * R;
+      TARGET[i3 + 2] = ORIG_TARGET[i3 + 2] + FW_DIR_Z[i] * dist * R;
+      SZ[i] = FW_ORIG_SZ[i] * sizeMul;
+    }
+  }
+  // 第二阶段保持 (0.45~0.6)
+  else if (t < 0.6) {
+    const hold = (t - 0.45) / 0.15;
+    const sizeMul = 6 - hold * 1.5;
+    for (let i = 0; i < N; i++) {
+      const i3 = i * 3;
+      TARGET[i3] = ORIG_TARGET[i3] + FW_DIR_X[i] * 6 * R;
+      TARGET[i3 + 1] = ORIG_TARGET[i3 + 1] + FW_DIR_Y[i] * 6 * R;
+      TARGET[i3 + 2] = ORIG_TARGET[i3 + 2] + FW_DIR_Z[i] * 6 * R;
+      SZ[i] = FW_ORIG_SZ[i] * sizeMul;
+    }
+  }
+  // 第三阶段回缩 (0.6~1.0)
+  else {
+    const p = (t - 0.6) / 0.4;
+    const ease = 1 - Math.pow(1 - p, 2); // ease out 缓出
+    for (let i = 0; i < N; i++) {
+      const i3 = i * 3;
+      // 从最远点向原始位置插值
+      const ox = ORIG_TARGET[i3] + FW_DIR_X[i] * 6 * R;
+      const oy = ORIG_TARGET[i3 + 1] + FW_DIR_Y[i] * 6 * R;
+      const oz = ORIG_TARGET[i3 + 2] + FW_DIR_Z[i] * 6 * R;
+      TARGET[i3] = ox + (ORIG_TARGET[i3] - ox) * ease;
+      TARGET[i3 + 1] = oy + (ORIG_TARGET[i3 + 1] - oy) * ease;
+      TARGET[i3 + 2] = oz + (ORIG_TARGET[i3 + 2] - oz) * ease;
+      // 粒子大小从6倍逐渐恢复原始大小
+      SZ[i] = FW_ORIG_SZ[i] * (1 + (1 - ease) * 5);
+    }
+  }
+  GEO.attributes.size.needsUpdate = true;
+}
+
+// ============================================================
+// 模式管理
+// ============================================================
+const MB = document.querySelectorAll('#toolbar .mode-btn');
 function setMode(m) {
-    currentMode = m;
-    modeBtns.forEach((btn,i) => btn.className = 'mode-btn' + (i===m?' active':''));
+  if (m === CM) return;
+  CM = m;
+  MB.forEach((b, i) => b.className = 'mode-btn' + (i === m ? ' active' : ''));
+  document.getElementById('status-mode').textContent = MN[m];
 }
-modeBtns.forEach(btn => btn.addEventListener('click', () => setMode(parseInt(btn.dataset.mode))));
+MB.forEach(b => b.addEventListener('click', () => setMode(parseInt(b.dataset.mode))));
 
-let vx=0,vy=0,mouseDown=false,handActive=false,lastLandmarks=null,prevHandX=0,prevHandY=0,prevMouseX=0,prevMouseY=0,handFrames=0,fistHoldTimer=0;
-const keys = {};
-
-let lastClickTime = 0;
-document.addEventListener('click', e => {
-    const now = Date.now();
-    if (now - lastClickTime < 300) { vx=0; vy=0; }
-    lastClickTime = now;
-});
-
+// ============================================================
+// 换色
+// ============================================================
 function switchTheme() {
-    tIdx=(tIdx+1)%themes.length;theme=themes[tIdx];
-    for(let i=0;i<N;i++){const c=getParticleColor(theme, phiArr[i]);tcol[i*3]=c.r;tcol[i*3+1]=c.g;tcol[i*3+2]=c.b;}
+  TI = (TI + 1) % TH.length;
+  THM = TH[TI];
+  for (let i = 0; i < N; i++) {
+    const c = gc(THM.h, phiArr[i]);
+    TCOL[i * 3] = c.r;
+    TCOL[i * 3 + 1] = c.g;
+    TCOL[i * 3 + 2] = c.b;
+  }
+  document.getElementById('status-color').textContent = '🎨 ' + THM.n;
+  if (navigator.vibrate) navigator.vibrate(50);
+  const vb = document.getElementById('vibe-feedback');
+  vb.classList.remove('active');
+  void vb.offsetWidth;
+  vb.classList.add('active');
+  setTimeout(() => vb.classList.remove('active'), 300);
 }
 
+// ============================================================
+// 键盘 / 鼠标 / 触摸
+// ============================================================
 document.addEventListener('keydown', e => {
-    if (e.key === ' ') { e.preventDefault(); switchTheme(); }
-    if (e.key >= '1' && e.key <= '4') setMode(parseInt(e.key)-1);
-    keys[e.key] = true;
+  if (e.key === ' ') { e.preventDefault(); switchTheme(); }
+  if (e.key >= '1' && e.key <= '4') setMode(parseInt(e.key) - 1);
+  if (e.key === 't' || e.key === 'T') TE = !TE;
+  KEYS[e.key] = true;
 });
-document.addEventListener('keyup', e => { keys[e.key] = false; });
-
-document.addEventListener('mousedown', e => { if(e.button===0) mouseDown=true; });
-document.addEventListener('mouseup', e => { if(e.button===0) mouseDown=false; });
+document.addEventListener('keyup', e => { KEYS[e.key] = false; });
+document.addEventListener('mousedown', e => { if (e.button === 0) { MD = true; PMX = e.clientX; PMY = e.clientY; } });
+document.addEventListener('mouseup', e => { if (e.button === 0) MD = false; });
 document.addEventListener('mousemove', e => {
-    if(mouseDown){ handActive=false; lastLandmarks=null;
-        const dx=e.clientX-prevMouseX, dy=e.clientY-prevMouseY;
-        prevMouseX=e.clientX; prevMouseY=e.clientY;
-        vx+=dy*0.0008; vy+=dx*0.0008;
-    }
+  if (MD) {
+    HA = false; LL = null;
+    const dx = e.clientX - PMX, dy = e.clientY - PMY;
+    PMX = e.clientX; PMY = e.clientY;
+    VX += dy * 0.0008; VY += dx * 0.0008;
+  }
 });
-document.addEventListener('mouseleave', () => { mouseDown=false; });
+document.addEventListener('mouseleave', () => { MD = false; });
+let LCT = 0;
+document.addEventListener('click', e => { const n = Date.now(); if (n - LCT < 300) { VX = 0; VY = 0; } LCT = n; });
 
-// 触摸屏滑动操控
-let touchId=null, touchStartX=0, touchStartY=0;
+let TID = null, TSX = 0, TSY = 0;
 document.addEventListener('touchstart', e => {
-    const t = e.changedTouches[0];
-    if(t){ touchId=t.identifier; touchStartX=t.clientX; touchStartY=t.clientY;
-        handActive=false; lastLandmarks=null; }
-},{passive:true});
+  const t = e.changedTouches[0];
+  if (t) { TID = t.identifier; TSX = t.clientX; TSY = t.clientY; HA = false; LL = null; }
+}, { passive: true });
 document.addEventListener('touchmove', e => {
-    for(const t of e.changedTouches){
-        if(t.identifier===touchId){
-            const dx=t.clientX-touchStartX, dy=t.clientY-touchStartY;
-            touchStartX=t.clientX; touchStartY=t.clientY;
-            vx+=dy*0.0008; vy+=dx*0.0008;
-        }
+  for (const t of e.changedTouches) {
+    if (t.identifier === TID) {
+      const dx = t.clientX - TSX, dy = t.clientY - TSY;
+      TSX = t.clientX; TSY = t.clientY;
+      VX += dy * 0.0008; VY += dx * 0.0008;
     }
-},{passive:true});
+  }
+}, { passive: true });
 document.addEventListener('touchend', e => {
-    for(const t of e.changedTouches){ if(t.identifier===touchId){ touchId=null; break; } }
-},{passive:true});
+  for (const t of e.changedTouches) { if (t.identifier === TID) { TID = null; break; } }
+}, { passive: true });
 
-function onResults(res) {
-    if (res.multiHandLandmarks?.[0]) {
-        handActive=true; lastLandmarks=res.multiHandLandmarks[0];
-        const lm = m(lastLandmarks), palm=lm[9]; handFrames++;
-        const tips=[4,8,12,16,20]; let cluster=0;
-        for(let i=0;i<tips.length;i++) for(let j=i+1;j<tips.length;j++) cluster+=Math.hypot(lm[tips[i]].x-lm[tips[j]].x, lm[tips[i]].y-lm[tips[j]].y);
-        const isPinched=cluster<0.6; let curled=0;
-        for(let i=1;i<5;i++){ const tip=lm[[8,12,16,20][i-1]], pip=lm[[6,10,14,18][i-1]]; if(tip.y>pip.y+0.02) curled++; }
-        if(Math.hypot(lm[4].x-lm[1].x, lm[4].y-lm[1].y)<0.04) curled++;
-        const isFist=curled>=4;
-        if(isFist&&!isPinched){ fistHoldTimer+=0.016; if(fistHoldTimer>0.6){ fistHoldTimer=0; switchTheme(); } } else fistHoldTimer=0;
-        if(isPinched){ vx*=0.95; vy*=0.95; if(Math.abs(vx)<0.001)vx=0; if(Math.abs(vy)<0.001)vy=0; }
-        if(handFrames<=2){ prevHandX=palm.x; prevHandY=palm.y; }
-        else if(!isPinched&&!isFist){ const dx=palm.x-prevHandX, dy=palm.y-prevHandY; prevHandX=palm.x; prevHandY=palm.y; vx+=dy*0.25; vy+=dx*0.25; }
-        else{ prevHandX=palm.x; prevHandY=palm.y; }
-    } else { handActive=false; lastLandmarks=null; handFrames=0; fistHoldTimer=0; }
-    processing=false; drawHandSkeleton(lastLandmarks);
+// ============================================================
+// 陀螺仪
+// ============================================================
+function initGyro() {
+  if (typeof DeviceOrientationEvent !== 'undefined') {
+    window.addEventListener('deviceorientation', e => {
+      if (e.alpha === null) return;
+      GA = true; GAL = e.alpha || 0; GBE = e.beta || 0; GGA = e.gamma || 0;
+    }, false);
+  }
+}
+function applyGyro() {
+  if (!GA) return;
+  const tvx = (GBE - 0) * 0.002, tvy = (GGA - 0) * 0.002;
+  VX += (tvx - VX) * 0.02; VY += (tvy - VY) * 0.02;
+}
+
+// ============================================================
+// 语音控制
+// ============================================================
+function initVoice() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return;
+  REC = new SR();
+  REC.lang = 'zh-CN';
+  REC.continuous = true;
+  REC.interimResults = false;
+  REC.maxAlternatives = 5;
+  REC.onresult = (ev) => {
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      if (!ev.results[i].isFinal) continue;
+      const t = ev.results[i][0].transcript.trim().toLowerCase();
+      for (let j = 0; j < TH.length; j++) {
+        if (t.includes(TH[j].n) || t.includes(TH[j].n.replace('色', ''))) {
+          let tj = j;
+          if (TI !== tj) {
+            while (TI !== tj) { TI = (TI + 1) % TH.length; THM = TH[TI]; }
+            for (let k = 0; k < N; k++) {
+              const c = gc(THM.h, phiArr[k]);
+              TCOL[k * 3] = c.r; TCOL[k * 3 + 1] = c.g; TCOL[k * 3 + 2] = c.b;
+            }
+            document.getElementById('status-color').textContent = '🎨 ' + THM.n;
+            const vb = document.getElementById('vibe-feedback');
+            vb.classList.remove('active'); void vb.offsetWidth; vb.classList.add('active');
+            setTimeout(() => vb.classList.remove('active'), 300);
+          }
+          return;
+        }
+      }
+      const mn = ['星云', '爆散', '螺旋', '波光'];
+      for (let j = 0; j < mn.length; j++) { if (t.includes(mn[j])) { setMode(j); return; } }
+      if (t.includes('停止') || t.includes('停')) { VX = 0; VY = 0; }
+      if (t.includes('爆') || t.includes('放')) trigFW();
+    }
+  };
+  REC.onerror = () => {};
+  try { REC.start(); VA = true; } catch (e) { console.log('语音失败:', e); }
+}
+
+// ============================================================
+// 手部骨骼绘制
+// ============================================================
+const OV = document.getElementById('hand-overlay'), OVX = OV.getContext('2d');
+
+function mir(lm) { return lm ? lm.map(p => ({ x: 1 - p.x, y: p.y, z: p.z })) : lm; }
+
+function drawHand(lm) {
+  OVX.clearRect(0, 0, OV.width, OV.height);
+  if (!lm) return;
+  lm = mir(lm);
+  const w = OV.width, h = OV.height;
+  OVX.strokeStyle = 'rgba(74,158,255,0.25)';
+  OVX.lineWidth = 1.5;
+  OVX.beginPath();
+  for (const [i, j] of HC) {
+    OVX.moveTo(lm[i].x * w, lm[i].y * h);
+    OVX.lineTo(lm[j].x * w, lm[j].y * h);
+  }
+  OVX.stroke();
+  for (let i = 0; i < lm.length; i++) {
+    const p = lm[i], x = p.x * w, y = p.y * h;
+    const isTip = [4, 8, 12, 16, 20].includes(i);
+    const isPalm = [0, 5, 9, 13, 17].includes(i);
+    OVX.beginPath();
+    OVX.arc(x, y, isTip ? 5 : isPalm ? 2.5 : 1.5, 0, Math.PI * 2);
+    OVX.fillStyle = isTip ? 'rgba(255,200,50,0.7)' : isPalm ? 'rgba(74,158,255,0.5)' : 'rgba(255,255,255,0.25)';
+    OVX.fill();
+    if (isTip) { OVX.strokeStyle = 'rgba(255,255,255,0.4)'; OVX.lineWidth = 1; OVX.stroke(); }
+  }
+  const palm = lm[9];
+  if (palm) {
+    const x = palm.x * w, y = palm.y * h;
+    const tips = [4, 8, 12, 16, 20];
+    let cluster = 0;
+    for (let i = 0; i < tips.length; i++)
+      for (let j = i + 1; j < tips.length; j++)
+        cluster += Math.hypot(lm[tips[i]].x - lm[tips[j]].x, lm[tips[i]].y - lm[tips[j]].y);
+    let curled = 0;
+    for (let i = 1; i < 5; i++) {
+      const tip = lm[[8, 12, 16, 20][i - 1]], pip = lm[[6, 10, 14, 18][i - 1]];
+      if (tip.y > pip.y + 0.02) curled++;
+    }
+    if (Math.hypot(lm[4].x - lm[1].x, lm[4].y - lm[1].y) < 0.04) curled++;
+    const tid = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
+    const is2p = tid < 0.06 && cluster > 0.6;
+
+    OVX.font = '10px system-ui,sans-serif';
+    OVX.textAlign = 'center';
+    if (cluster < 0.6) {
+      OVX.fillStyle = 'rgba(255,100,100,0.4)';
+      OVX.fillText('🤏 捏合停止', x, y - 28);
+      OVX.beginPath(); OVX.arc(x, y, 18, 0, Math.PI * 2);
+      OVX.strokeStyle = 'rgba(255,100,100,0.1)'; OVX.lineWidth = 2; OVX.stroke();
+    } else if (is2p) {
+      OVX.fillStyle = 'rgba(100,200,255,0.4)';
+      OVX.fillText('🔒 角度锁定', x, y - 28);
+      OVX.beginPath(); OVX.arc(x, y, 18, 0, Math.PI * 2);
+      OVX.strokeStyle = 'rgba(100,200,255,0.15)'; OVX.lineWidth = 2; OVX.stroke();
+    } else if (curled >= 4) {
+      OVX.fillStyle = 'rgba(255,200,50,0.4)';
+      OVX.fillText('✊ 握拳爆散!', x, y - 28);
+    } else {
+      OVX.fillStyle = 'rgba(255,255,255,0.12)';
+      OVX.fillText('✋ 控制中', x, y - 28);
+    }
+  }
+}
+
+// ============================================================
+// 手势回调（V字换色 + 握拳爆散）
+// ============================================================
+function onHand(r) {
+  if (r.multiHandLandmarks && r.multiHandLandmarks.length > 0) {
+    HA = true;
+    LL = r.multiHandLandmarks[0];
+    const lm = mir(LL);
+    const palm = lm[9];
+    HF++;
+
+    const tips = [4, 8, 12, 16, 20];
+    let cluster = 0;
+    for (let i = 0; i < tips.length; i++)
+      for (let j = i + 1; j < tips.length; j++)
+        cluster += Math.hypot(lm[tips[i]].x - lm[tips[j]].x, lm[tips[i]].y - lm[tips[j]].y);
+    let curled = 0;
+    for (let i = 1; i < 5; i++) {
+      const tip = lm[[8, 12, 16, 20][i - 1]], pip = lm[[6, 10, 14, 18][i - 1]];
+      if (tip.y > pip.y + 0.02) curled++;
+    }
+    if (Math.hypot(lm[4].x - lm[1].x, lm[4].y - lm[1].y) < 0.04) curled++;
+    const tid = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
+    const is2p = tid < 0.06 && cluster > 0.6;
+    const isPinched = cluster < 0.6;
+    const isFist = curled >= 4 && !isPinched;
+
+    // ✌️ V字手势换色
+    const idxUp = lm[8].y < lm[6].y || Math.hypot(lm[8].x - lm[6].x, lm[8].y - lm[6].y) > 0.03;
+    const midUp = lm[12].y < lm[10].y || Math.hypot(lm[12].x - lm[10].x, lm[12].y - lm[10].y) > 0.03;
+    const ringDown = lm[16].y > lm[14].y || Math.hypot(lm[16].x - lm[14].x, lm[16].y - lm[14].y) < 0.015;
+    const pinkyDown = lm[20].y > lm[18].y || Math.hypot(lm[20].x - lm[18].x, lm[20].y - lm[18].y) < 0.015;
+    const isV = idxUp && midUp && ringDown && pinkyDown && !isFist && !isPinched && cluster > 0.7;
+
+    TFP = is2p; PLA = is2p;
+    if (isV) document.getElementById('status-gesture').textContent = '✌️ V字换色';
+    else if (is2p) document.getElementById('status-gesture').textContent = '🔒 角度锁定';
+    else if (isPinched) document.getElementById('status-gesture').textContent = '🤏 捏合停止';
+    else if (isFist) document.getElementById('status-gesture').textContent = '✊ 爆散!';
+    else document.getElementById('status-gesture').textContent = '✋ 挥手控制';
+
+    if (isV) { OKT += 0.016; if (OKT > 0.4) { OKT = 0; switchTheme(); } } else { OKT = 0; }
+    if (isPinched) { VX *= 0.92; VY *= 0.92; if (Math.abs(VX) < 0.0005) VX = 0; if (Math.abs(VY) < 0.0005) VY = 0; }
+    if (isFist) { FHT += 0.016; if (FHT > 0.5) { FHT = 0; trigFW(); } } else if (!isV) { FHT = 0; }
+    if (!isPinched && !isFist && !is2p && !isV) {
+      if (HF <= 2) { PHX = palm.x; PHY = palm.y; } else {
+        const dx = palm.x - PHX, dy = palm.y - PHY;
+        VX += Math.sign(dy) * Math.pow(Math.abs(dy) * 8, 0.7) * 0.2;
+        VY += Math.sign(dx) * Math.pow(Math.abs(dx) * 8, 0.7) * 0.2;
+        PHX = palm.x; PHY = palm.y;
+      }
+    } else { PHX = palm.x; PHY = palm.y; }
+  } else {
+    HA = false; LL = null; HF = 0; FHT = 0; OKT = 0; TFP = false; PLA = false;
+    document.getElementById('status-gesture').textContent = '-- 无手势';
+  }
+  PR = false;
+  drawHand(LL);
+}
+
+// ============================================================
+// 初始化 MediaPipe
+// ============================================================
+function setProg(p, m) {
+  const b = document.getElementById('progress-bar'), t = document.getElementById('progress-text');
+  if (b) b.style.width = Math.min(p, 100) + '%';
+  if (t) t.textContent = m || '加载模型...';
+}
+const flushDOM = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+
+async function initMP() {
+  setProg(10, '初始化...');
+  await flushDOM();
+  const h = new Hands({ locateFile: f => 'https://unpkg.com/@mediapipe/hands@0.4.1675469240/' + f });
+  h.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.6 });
+  h.onResults(onHand);
+  HR = h;
+  setProg(50, '就绪');
+  await flushDOM();
+  return h;
 }
 
 async function init() {
-    const hands=new Hands({ locateFile:f=>"https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/"+f });
-    hands.setOptions({ maxNumHands:1, modelComplexity:0, minDetectionConfidence:0.7, minTrackingConfidence:0.6 });
-    hands.onResults(onResults);
-    const video=document.getElementById('webcam');
-    const stream=await navigator.mediaDevices.getUserMedia({ video:{facingMode:'user',width:{ideal:640},height:{ideal:480}}, audio:false });
-    video.srcObject=stream; await video.play();
-    function sendFrame(){ if(video.readyState>=2&&!processing){ processing=true; hands.send({image:video}); } requestAnimationFrame(sendFrame); }
-    sendFrame();
-    document.getElementById('loading').classList.add('hidden');
-}
-init().catch(e=>{ document.getElementById('loading').innerHTML='<div style="color:#ff6b6b;font-size:14px;padding:20px;text-align:center">❌ 摄像头启动失败<br><span style="font-size:11px;opacity:0.5">'+e.message+'</span></div>'; setTimeout(()=>document.getElementById('loading').classList.add('hidden'),3000); });
+  init3();
+  initGyro();
+  let h;
+  try {
+    h = await initMP();
+  } catch (e) {
+    console.error('MediaPipe失败:', e);
+    document.getElementById('loading').innerHTML =
+      '<div style="color:#ff6b6b;font-size:13px;padding:20px;text-align:center">❌ 手势模型加载失败<br>' +
+      '<span style="font-size:10px;opacity:.5">将降级为鼠标/键盘控制</span></div>';
+    setTimeout(() => document.getElementById('loading').classList.add('hidden'), 2500);
+    startAnim();
+    return;
+  }
 
-let t=0;
-function animate() {
-    requestAnimationFrame(animate); t+=0.016;
-    vx*=0.99; vy*=0.99;
-    if(Math.abs(vx)<0.0001)vx=0; if(Math.abs(vy)<0.0001)vy=0;
-    // 键盘8方向操控 (Arrow keys)
-    let kx=0, ky=0;
-    if(keys['ArrowUp']) ky=-1; if(keys['ArrowDown']) ky=1;
-    if(keys['ArrowLeft']) kx=-1; if(keys['ArrowRight']) kx=1;
-    if(kx!==0||ky!==0){ const len=Math.hypot(kx,ky); vx+=ky/len*0.025; vy+=kx/len*0.025; }
-    computeTarget(currentMode, t, target);
-    const speed = currentMode===1||currentMode===2 ? 0.08 : 0.05;
-    const p=geo.attributes.position.array;
-    for(let i=0;i<N*3;i++) p[i] += (target[i] - p[i]) * speed;
-    geo.attributes.position.needsUpdate = true;
-    const c=geo.attributes.color.array;
-    for(let i=0;i<N*3;i++) c[i] += (tcol[i] - c[i]) * 0.03;
-    geo.attributes.color.needsUpdate = true;
-    points.rotation.x += vx; points.rotation.y += vy;
-    starMat.opacity = 0.1 + Math.sin(t*0.5)*0.05;
-    if(!handActive&&lastLandmarks===null)ctx.clearRect(0,0,overlay.width,overlay.height);
-    renderer.render(scene,cam);
+  let v;
+  try {
+    v = document.getElementById('webcam');
+    setProg(70, '启动摄像头...');
+    await flushDOM();
+    const s = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } },
+      audio: false
+    });
+    v.srcObject = s;
+    await v.play();
+    VR = v;
+    const cam = new Camera(v, {
+      onFrame: async () => {
+        if (!PR) { PR = true; try { await h.send({ image: v }); } catch (e) { PR = false; } }
+      },
+      width: 640, height: 480
+    });
+    cam.start();
+  } catch (e) {
+    console.warn('摄像头失败:', e.message);
+    document.getElementById('loading').innerHTML =
+      '<div style="color:#ff6b6b;font-size:13px;padding:20px;text-align:center">❌ 摄像头失败<br>' +
+      '<span style="font-size:10px;opacity:.5">将降级为鼠标/键盘控制</span></div>';
+    setTimeout(() => document.getElementById('loading').classList.add('hidden'), 2500);
+    startAnim();
+    return;
+  }
+
+  setProg(100, '就绪');
+  await flushDOM();
+  document.getElementById('loading').classList.add('hidden');
+  initVoice();
+  startAnim();
 }
-animate();
+
+// ============================================================
+// 动画主循环
+// ============================================================
+function startAnim() {
+  function anim() {
+    requestAnimationFrame(anim);
+    const dt = 0.016;
+    AT += dt;
+
+    VX *= 0.99; VY *= 0.99;
+    if (Math.abs(VX) < 0.0001) VX = 0;
+    if (Math.abs(VY) < 0.0001) VY = 0;
+
+    let kx = 0, ky = 0;
+    if (KEYS['ArrowUp']) ky = -1;
+    if (KEYS['ArrowDown']) ky = 1;
+    if (KEYS['ArrowLeft']) kx = -1;
+    if (KEYS['ArrowRight']) kx = 1;
+    if (kx !== 0 || ky !== 0) { const l = Math.hypot(kx, ky); VX += ky / l * 0.025; VY += kx / l * 0.025; }
+
+    applyGyro();
+
+    // 🧨 如果烟花激活，覆盖目标位置
+    if (FW_ACTIVE) {
+      applyFWTargets();
+    } else {
+      CT(CM, AT, TARGET);
+    }
+
+    const sp = 0.12;
+    const p = GEO.attributes.position.array;
+    for (let i = 0; i < N * 3; i++) p[i] += (TARGET[i] - p[i]) * sp;
+    GEO.attributes.position.needsUpdate = true;
+
+    const c = GEO.attributes.color.array;
+    for (let i = 0; i < N * 3; i++) c[i] += (TCOL[i] - c[i]) * 0.04;
+    GEO.attributes.color.needsUpdate = true;
+
+    if (!PLA) { POINTS.rotation.x += VX; POINTS.rotation.y += VY; }
+
+    SM.opacity = 0.08 + Math.sin(AT * 0.4) * 0.05;
+    NM.opacity = 0.03 + Math.sin(AT * 0.3 + 1) * 0.02;
+    SF.rotation.y += 0.0001;
+    NPTS.rotation.y += 0.0002;
+    NPTS.rotation.x += 0.0001;
+
+    if (!HA && LL === null) OVX.clearRect(0, 0, OV.width, OV.height);
+    RENDERER.render(SC, CAM);
+  }
+  anim();
+}
+
+// ============================================================
+// 启动！
+// ============================================================
+init().catch(e => {
+  document.getElementById('loading').innerHTML =
+    '<div style="color:#ff6b6b;font-size:13px;padding:20px;text-align:center">❌ 初始化失败<br>' +
+    '<span style="font-size:10px;opacity:.5">' + e.message + '</span></div>';
+  setTimeout(() => document.getElementById('loading').classList.add('hidden'), 3000);
+});
+
+window.addEventListener('beforeunload', () => {
+  const v = document.getElementById('webcam');
+  if (v && v.srcObject) v.srcObject.getTracks().forEach(t => t.stop());
+  if (REC && VA) try { REC.stop(); } catch (e) {}
+});
 </script>
 </body>
 </html>

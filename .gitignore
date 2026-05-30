@@ -4,3 +4,14 @@ tunnel-url.txt
 .env
 package-lock.json
 *.pem
+mediapipe/
+browser_top.png
+error_bw.png
+error_combined.png
+error_msg.png
+error_msg_enhanced.png
+error_region.png
+error_wide.png
+screenshot.png
+view_scr.html
+星穹流光.html
